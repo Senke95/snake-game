@@ -17,6 +17,7 @@
     hapticGameOverMs: 26,
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
+    supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
     maxPlayerName: 16,
   };
 
@@ -89,6 +90,8 @@
     touchStart: null,
     noticeTimer: 0,
     canUseGlobalLeaderboard: true,
+    backendMode: "none",
+    backendHint: "",
     isCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
     wasRunningBeforeHidden: false,
   };
@@ -100,7 +103,7 @@
 
   // Initierar appens startflöde och första render.
   function init() {
-    state.canUseGlobalLeaderboard = !isUnsupportedHosting();
+    resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
     resetRound();
@@ -831,8 +834,7 @@
     event.preventDefault();
 
     if (!state.canUseGlobalLeaderboard) {
-      nameErrorEl.textContent =
-        "Global topplista kräver backend. GitHub Pages kan inte spara topplistan. Publicera på Cloudflare Pages med Functions + D1 enligt README.";
+      nameErrorEl.textContent = state.backendHint;
       return;
     }
 
@@ -865,23 +867,14 @@
   async function fetchAndRenderLeaderboard() {
     if (!state.canUseGlobalLeaderboard) {
       leaderboardListEl.innerHTML = "";
-      leaderboardStateEl.textContent = "Global topplista kräver Cloudflare Pages med Functions + D1.";
+      leaderboardStateEl.textContent = state.backendHint;
       return;
     }
 
     leaderboardStateEl.textContent = "Laddar topplista...";
 
     try {
-      const response = await fetch(CONSTANTS.leaderboardEndpoint, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error("Kunde inte hämta topplistan");
-      }
-
-      const data = await response.json();
+      const data = await fetchLeaderboardData();
       const top = Array.isArray(data.top) ? data.top : [];
       renderLeaderboard(top);
       leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
@@ -917,6 +910,14 @@
   }
 
   async function postScore(name, score) {
+    if (state.backendMode === "supabase") {
+      return postScoreSupabase(name, score);
+    }
+
+    return postScoreApi(name, score);
+  }
+
+  async function postScoreApi(name, score) {
     let response;
     try {
       response = await fetch(CONSTANTS.leaderboardEndpoint, {
@@ -941,6 +942,41 @@
     }
 
     const data = await response.json();
+    const top = Array.isArray(data.top) ? data.top : [];
+    renderLeaderboard(top);
+    leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+  }
+
+  async function postScoreSupabase(name, score) {
+    const config = getSupabaseConfig();
+    const endpoint = `${config.url}/rest/v1/scores`;
+    const headers = {
+      apikey: config.anonKey,
+      Authorization: `Bearer ${config.anonKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    };
+
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name, score }),
+      });
+    } catch (_error) {
+      throw new Error(
+        "Kunde inte spara (nätverksfel). Kontrollera internetanslutning och Supabase URL i config.js."
+      );
+    }
+
+    if (!response.ok) {
+      const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
+      const details = responseBody ? ` Svar: ${responseBody}` : "";
+      throw new Error(`Kunde inte spara (HTTP ${response.status}). Kontrollera Supabase-konfiguration.${details}`);
+    }
+
+    const data = await fetchLeaderboardSupabase(config);
     const top = Array.isArray(data.top) ? data.top : [];
     renderLeaderboard(top);
     leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
@@ -979,11 +1015,10 @@
       return;
     }
 
-    modalInfoEl.textContent =
-      "Global topplista kräver backend. GitHub Pages kan inte spara topplistan. Publicera på Cloudflare Pages med Functions + D1 enligt README.";
+    modalInfoEl.textContent = state.backendHint;
   }
 
-  function isUnsupportedHosting() {
+  function isStaticHosting() {
     const host = window.location.hostname.toLowerCase();
     return window.location.protocol === "file:" || host.endsWith("github.io");
   }
@@ -1001,8 +1036,19 @@
   }
 
   async function checkApiStatus() {
-    if (isUnsupportedHosting()) {
+    if (state.backendMode === "none") {
       apiStatusEl.textContent = "API: saknas";
+      return;
+    }
+
+    if (state.backendMode === "supabase") {
+      try {
+        const config = getSupabaseConfig();
+        const top = await fetchLeaderboardSupabase(config, 1);
+        apiStatusEl.textContent = Array.isArray(top.top) ? "API: OK" : "API: saknas";
+      } catch (_error) {
+        apiStatusEl.textContent = "API: saknas";
+      }
       return;
     }
 
@@ -1022,6 +1068,83 @@
     } catch (_error) {
       apiStatusEl.textContent = "API: saknas";
     }
+  }
+
+  function resolveBackendMode() {
+    const supabaseConfig = getSupabaseConfig();
+
+    if (supabaseConfig.url && supabaseConfig.anonKey) {
+      state.backendMode = "supabase";
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
+      return;
+    }
+
+    if (!isStaticHosting()) {
+      state.backendMode = "api";
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
+      return;
+    }
+
+    state.backendMode = "none";
+    state.canUseGlobalLeaderboard = false;
+    state.backendHint =
+      "Global topplista kräver backend. På GitHub Pages behöver du konfigurera Supabase i config.js eller använda Cloudflare Pages med Functions + D1 enligt README.";
+  }
+
+  function getSupabaseConfig() {
+    const globalConfig = window.SNAKE_CONFIG || {};
+    const rawUrl = String(globalConfig.SUPABASE_URL || CONSTANTS.supabaseDefaultUrl).trim();
+    const rawAnonKey = String(globalConfig.SUPABASE_ANON_KEY || "").trim();
+    const url = rawUrl.replace(/\/+$/, "");
+
+    return {
+      url,
+      anonKey: rawAnonKey,
+    };
+  }
+
+  async function fetchLeaderboardData() {
+    if (state.backendMode === "supabase") {
+      const config = getSupabaseConfig();
+      return fetchLeaderboardSupabase(config);
+    }
+
+    const response = await fetch(CONSTANTS.leaderboardEndpoint, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error("Kunde inte hämta topplistan");
+    }
+
+    return response.json();
+  }
+
+  async function fetchLeaderboardSupabase(config, limit = 5) {
+    const params = new URLSearchParams({
+      select: "name,score,created_at",
+      order: "score.desc,created_at.asc",
+      limit: String(limit),
+    });
+
+    const response = await fetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
+      method: "GET",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Kunde inte läsa Supabase-topplistan");
+    }
+
+    const rows = await response.json();
+    return { top: Array.isArray(rows) ? rows : [] };
   }
 
   function roundRectFill(context, x, y, width, height, radius) {

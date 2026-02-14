@@ -1,14 +1,6 @@
 ﻿# Snake med global topplista
 
-Snake är ett statiskt webspel med global topplista byggd på Cloudflare Pages Functions och D1.
-
-## Dokumentation
-
-- Arkitektur: `docs/ARKITEKTUR.md`
-- API: `docs/API.md`
-- Kodreferens: `docs/KODREFERENS.md`
-- Bidragsguide: `CONTRIBUTING.md`
-- Best practice 2026: `docs/BEST_PRACTICE_2026.md`
+Snake är ett statiskt webspel med global topplista. Spelet kan köras på GitHub Pages med Supabase, eller på Cloudflare Pages med Functions + D1.
 
 ## Snabbstart lokalt
 
@@ -21,21 +13,6 @@ python -m http.server 8000
 
 3. Öppna `http://localhost:8000`.
 
-## Kvalitetskontroll UI
-
-Verifiera i browser:
-- Viewport: `1366 x 768`
-- Zoom: `100%`
-- Förväntat: spelpanel och topplista syns utan att användaren måste zooma ut.
-
-## Mobil testmatris
-
-Verifiera på både Android och iOS:
-- Stående läge: svepstyrning fungerar utan scroll-ryck.
-- Liggande läge: canvas och kontroller får plats med safe areas.
-- App i bakgrunden och tillbaka: spelet går till paus.
-- D-pad respons: knapptryck känns direkt och ger taktil feedback där enheten stödjer vibration.
-
 ## Kontroller
 
 - Pilar eller `WASD`: styr ormen
@@ -43,56 +20,52 @@ Verifiera på både Android och iOS:
 - `Space`: pausa eller fortsätt
 - `R`: starta om
 
-## Global topplista (Cloudflare Pages + D1)
+## Global topplista med Supabase (rekommenderat för GitHub Pages)
 
-1. Skapa Cloudflare Pages-projekt från GitHub-repot
-- Gå till [Cloudflare Dashboard](https://dash.cloudflare.com/) -> `Workers & Pages` -> `Create application` -> `Pages` -> `Connect to Git`.
-- Välj detta GitHub-repo.
-- Build command: lämna tomt.
-- Build output directory: `/`.
-- Klicka `Save and Deploy`.
+1. Skapa tabell och policies
+- Öppna Supabase Dashboard -> `SQL Editor`.
+- Kör hela filen `supabase/schema.sql`.
 
-2. Skapa D1-databas
-- Gå till `Workers & Pages` -> `D1` -> `Create database`.
-- Ge databasen ett namn, till exempel `snake-leaderboard`.
+2. Hämta projektets API-inställningar
+- Gå till `Project Settings` -> `API`.
+- Kopiera:
+  - Project URL
+  - `anon` public key
 
-3. Kör schema i D1 Console
-- Öppna databasen -> `Console`.
-- Kopiera innehållet från `db/schema.sql`.
-- Kör SQL i konsolen.
+3. Konfigurera frontend
+- Öppna `config.js` i repot.
+- Sätt:
+  - `SUPABASE_URL` till din Project URL.
+  - `SUPABASE_ANON_KEY` till din `anon` key.
 
-4. Bind D1 till Pages-projektet
-- Gå till `Workers & Pages` -> ditt Pages-projekt -> `Settings` -> `Functions` -> `D1 bindings`.
-- Klicka `Add binding`.
-- Binding name: `DB`.
-- Database: välj databasen du skapade.
-- Spara.
+4. Deploya till GitHub Pages
+- Pusha till `main`.
+- Öppna GitHub Pages-länken.
+- Verifiera att UI visar `API: OK`.
 
-5. Deploya och testa
-- Gå till `Workers & Pages` -> ditt projekt -> `Deployments`.
-- Klicka `Retry deployment` eller pusha en ny commit till `main`.
-- Öppna `https://<ditt-projekt>.pages.dev/api/health`.
-- Förväntat svar: JSON med `ok: true` och `db: \"ok\"`.
-- Öppna spelet och spara en score i namnmodalen.
+5. Testa spara score
+- Spela tills game over.
+- Skriv namn och klicka `Spara`.
+- Topplistan ska uppdateras globalt.
 
-## API
+## Alternativ: Cloudflare Pages + D1
 
-- `GET /api/health`
-- `GET /api/leaderboard`
-- `POST /api/leaderboard`
+1. Skapa Cloudflare Pages-projekt från repot.
+2. Skapa D1-databas.
+3. Kör `db/schema.sql` i D1 Console.
+4. Lägg D1 binding med namn `DB` i Pages-projektet.
+5. Deploya och verifiera `/api/health`.
 
-## GitHub Pages
+## API-endpoints
 
-- Spelet fungerar på GitHub Pages.
-- Spara till global topplista är avstängt där eftersom `/api` saknas på statisk hosting.
-- För global topplista, använd Cloudflare Pages med Functions + D1 enligt stegen ovan.
+- `GET /api/health` (Cloudflare Functions)
+- `GET /api/leaderboard` (Cloudflare Functions)
+- `POST /api/leaderboard` (Cloudflare Functions)
 
-Exempel:
+Supabase-läget använder direktanrop mot `https://<project-ref>.supabase.co/rest/v1/scores`.
 
-```json
-{
-  "name": "Spelare",
-  "score": 12
-}
-```
+## Felsökning
 
+- `API: saknas` på GitHub Pages: kontrollera `config.js` och att `SUPABASE_ANON_KEY` är satt.
+- `HTTP 401/403` vid spara: kontrollera `anon` key och att policies i `supabase/schema.sql` är körda.
+- `HTTP 404` i Cloudflare-läge: kontrollera att Functions är deployade.
