@@ -18,7 +18,7 @@
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
-    configPath: "./config.js",
+    leaderboardFetchLimit: 50,
     maxPlayerName: 16,
     localLeaderboardKey: "snake-local-leaderboard",
   };
@@ -108,7 +108,6 @@
     wasRunningBeforeHidden: false,
     lastSubmittedName: "",
     lastSubmittedScore: null,
-    supabaseConfig: null,
   };
 
   const audio = createAudio();
@@ -118,10 +117,9 @@
   init();
 
   // Initierar appens startflöde och första render.
-  async function init() {
+  function init() {
     window.__top1Score = Number.isFinite(window.__top1Score) ? window.__top1Score : 0;
     window.__pendingBeatsRecord = false;
-    await loadRuntimeConfig();
     resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
@@ -952,7 +950,7 @@
 
     let youBadgeUsed = false;
 
-    for (let i = 0; i < Math.min(5, top.length); i += 1) {
+    for (let i = 0; i < top.length; i += 1) {
       const row = top[i];
       const item = document.createElement("li");
       item.className = "leaderboard-item";
@@ -1080,7 +1078,7 @@
       );
     }
 
-    const data = await fetchLeaderboardSupabase(config);
+    const data = await fetchLeaderboardSupabase(config, CONSTANTS.leaderboardFetchLimit);
     const top = Array.isArray(data.top) ? data.top : [];
     renderLeaderboard(top);
     leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
@@ -1412,93 +1410,20 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  async function loadRuntimeConfig() {
-    const fromWindow = readSupabaseConfigFromWindow();
-    if (fromWindow) {
-      state.supabaseConfig = fromWindow;
-      return;
-    }
-
-    const fromFile = await readSupabaseConfigFromFile();
-    state.supabaseConfig = fromFile;
-  }
-
   function getConfig() {
-    const config = state.supabaseConfig;
-    if (!config?.url || !config?.key) {
-      return null;
-    }
-
-    return {
-      url: config.url,
-      key: config.key,
-    };
-  }
-
-  function readSupabaseConfigFromWindow() {
     const globalConfig = window.SNAKE_CONFIG || {};
-    const fromObjectUrl = String(globalConfig.SUPABASE_URL || "").trim();
-    const fromObjectKey = String(globalConfig.SUPABASE_ANON_KEY || "").trim();
-    const fromGlobalUrl = String(window.SUPABASE_URL || "").trim();
-    const fromGlobalKey = String(window.SUPABASE_ANON_KEY || "").trim();
+    const rawUrl = String(globalConfig.SUPABASE_URL || "").trim();
+    const rawKey = String(globalConfig.SUPABASE_ANON_KEY || "").trim();
+    const normalizedUrl = rawUrl.replace(/\/+$/, "");
 
-    const rawUrl = fromObjectUrl || fromGlobalUrl || CONSTANTS.supabaseDefaultUrl;
-    const rawKey = fromObjectKey || fromGlobalKey;
-
-    if (!rawUrl || !rawKey) {
+    if (!normalizedUrl || !rawKey) {
       return null;
     }
 
     return {
-      url: rawUrl.replace(/\/+$/, ""),
+      url: normalizedUrl,
       key: rawKey,
     };
-  }
-
-  async function readSupabaseConfigFromFile() {
-    let source = "";
-
-    try {
-      const response = await fetch(CONSTANTS.configPath, {
-        method: "GET",
-        headers: { Accept: "text/plain" },
-      });
-      if (!response.ok) {
-        return null;
-      }
-      source = await response.text();
-    } catch (_error) {
-      return null;
-    }
-
-    const exportedUrl = readExportConst(source, "SUPABASE_URL");
-    const exportedKey = readExportConst(source, "SUPABASE_ANON_KEY");
-    const objectUrl = readObjectLiteralValue(source, "SUPABASE_URL");
-    const objectKey = readObjectLiteralValue(source, "SUPABASE_ANON_KEY");
-
-    const rawUrl = exportedUrl || objectUrl || CONSTANTS.supabaseDefaultUrl;
-    const rawKey = exportedKey || objectKey;
-
-    if (!rawUrl || !rawKey) {
-      return null;
-    }
-
-    return {
-      url: rawUrl.replace(/\/+$/, ""),
-      key: rawKey,
-    };
-  }
-
-  function readExportConst(source, keyName) {
-    const regex = new RegExp(`export\\s+const\\s+${keyName}\\s*=\\s*["']([^"']+)["']`, "i");
-    const match = source.match(regex);
-    return match?.[1]?.trim() || "";
-  }
-
-  function readObjectLiteralValue(source, keyName) {
-    const regex = new RegExp(`${keyName}\\s*:\\s*["']([^"']+)["']`, "i");
-    const match = source.match(regex);
-    return match?.[1]?.trim() || "";
   }
 
   function isLegacyJwtKey(key) {
@@ -1535,6 +1460,7 @@
       state.backendMode = "supabase";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
+      console.info("[Snake] backend mode decision: supabase (window.SNAKE_CONFIG)");
       return;
     }
 
@@ -1542,22 +1468,24 @@
       state.backendMode = "api";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
+      console.info("[Snake] backend mode decision: api (same-origin /api)");
       return;
     }
 
     state.backendMode = "local";
     state.canUseGlobalLeaderboard = true;
     state.backendHint = "";
+    console.info("[Snake] backend mode decision: local (missing config)");
   }
 
   async function fetchLeaderboardData() {
     if (state.backendMode === "local") {
-      return fetchLeaderboardLocal();
+      return fetchLeaderboardLocal(CONSTANTS.leaderboardFetchLimit);
     }
 
     if (state.backendMode === "supabase") {
       const config = getConfig();
-      return fetchLeaderboardSupabase(config);
+      return fetchLeaderboardSupabase(config, CONSTANTS.leaderboardFetchLimit);
     }
 
     const response = await fetch(CONSTANTS.leaderboardEndpoint, {
@@ -1573,7 +1501,7 @@
     return response.json();
   }
 
-  async function fetchLeaderboardSupabase(config, limit = 5) {
+  async function fetchLeaderboardSupabase(config, limit = CONSTANTS.leaderboardFetchLimit) {
     if (!config) {
       throw new Error("Supabase är inte konfigurerat.");
     }
