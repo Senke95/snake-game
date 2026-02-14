@@ -1,6 +1,7 @@
 ﻿(() => {
   "use strict";
 
+  // Central konfiguration för spelmotor, input och leaderboard-API.
   const CONSTANTS = {
     gridSize: 22,
     baseStepMs: 145,
@@ -58,6 +59,7 @@
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d", { alpha: false });
 
+  // Runtime-state för hela appen. Hålls i minnet och återställs per omgång.
   const state = {
     mode: GAME_MODE.idle,
     snake: [],
@@ -86,6 +88,7 @@
 
   init();
 
+  // Initierar appens startflöde och första render.
   function init() {
     wireEvents();
     resetRound();
@@ -106,6 +109,7 @@
     }
   }
 
+  // Kopplar alla användarinteraktioner: tangentbord, touch, knappar och modal.
   function wireEvents() {
     document.addEventListener("keydown", onKeyDown);
 
@@ -208,6 +212,7 @@
     });
   }
 
+  // Huvudhantering för tangentbord. Prioriterar modal-logik före spelinput.
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
 
@@ -362,6 +367,7 @@
     }
   }
 
+  // requestAnimationFrame-loop med fixed timestep för logik och interpolerad render.
   function loop(timeStamp) {
     if (!state.lastFrameTime) {
       state.lastFrameTime = timeStamp;
@@ -392,6 +398,7 @@
     requestAnimationFrame(loop);
   }
 
+  // En logisk tick: riktning, kollision, mat, score och game over.
   function fixedStep() {
     applyBufferedTurn();
 
@@ -528,6 +535,7 @@
     state.shakeAmount = Math.max(0, state.shakeAmount - dt * 24);
   }
 
+  // Topnivå-rendering av en frame.
   function draw(alpha, dt) {
     if (canvas.width === 0 || canvas.height === 0) {
       return;
@@ -753,6 +761,7 @@
     }
   }
 
+  // Öppnar modal för att kunna spara score till global topplista.
   function openNameModal() {
     nameErrorEl.textContent = "";
     saveNameBtnEl.disabled = false;
@@ -771,6 +780,7 @@
     nameErrorEl.textContent = "";
   }
 
+  // Skickar score till backend efter validering.
   async function submitScore(event) {
     event.preventDefault();
 
@@ -799,6 +809,7 @@
     }
   }
 
+  // Hämtar topplistan från backend och uppdaterar UI.
   async function fetchAndRenderLeaderboard() {
     leaderboardStateEl.textContent = "Laddar topplista...";
 
@@ -900,6 +911,7 @@
     context.fill();
   }
 
+  // Ljudmotor med Web Audio API, aktiveras först efter användargesture.
   function createAudio() {
     let audioContext = null;
 

@@ -1,4 +1,5 @@
-﻿function corsHeaders() {
+﻿// Standardheaders för JSON-svar och enkel CORS.
+function corsHeaders() {
   return {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
@@ -8,6 +9,7 @@
   };
 }
 
+// Hjälpfunktion för konsekventa JSON-responser.
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -15,6 +17,7 @@ function json(data, status = 200) {
   });
 }
 
+// Sanerar och begränsar spelarnamn server-side.
 function sanitizeName(value) {
   const withoutBreaks = String(value || "").replace(/[\r\n]+/g, " ");
   const trimmed = withoutBreaks.trim();
@@ -24,6 +27,7 @@ function sanitizeName(value) {
   return trimmed.slice(0, 16);
 }
 
+// Läser topp 5 sorterat på score och tidpunkt.
 async function readTop(db) {
   const result = await db
     .prepare(
@@ -34,6 +38,7 @@ async function readTop(db) {
   return Array.isArray(result.results) ? result.results : [];
 }
 
+// HTTP-entrypoint för Cloudflare Pages Function.
 export async function onRequest(context) {
   const { request, env } = context;
 
