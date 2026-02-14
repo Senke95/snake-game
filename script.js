@@ -216,6 +216,12 @@
       return;
     }
 
+    if (key === "enter" && modalEl.classList.contains("is-open") && state.mode === GAME_MODE.gameover) {
+      event.preventDefault();
+      startGame();
+      return;
+    }
+
     if (
       key === "arrowup" ||
       key === "arrowdown" ||
