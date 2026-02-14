@@ -18,7 +18,7 @@
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
-    leaderboardFetchLimit: 50,
+    leaderboardFetchLimit: 100,
     maxPlayerName: 16,
     localLeaderboardKey: "snake-local-leaderboard",
   };
@@ -106,10 +106,12 @@
     canUseGlobalLeaderboard: true,
     backendMode: "none",
     backendHint: "",
+    backendReason: "",
     isCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
     wasRunningBeforeHidden: false,
     lastSubmittedName: "",
     lastSubmittedScore: null,
+    pendingRecordAttempt: null,
   };
 
   const audio = createAudio();
@@ -119,10 +121,10 @@
   init();
 
   // Initierar appens startflöde och första render.
-  function init() {
+  async function init() {
     window.__top1Score = Number.isFinite(window.__top1Score) ? window.__top1Score : 0;
     window.__pendingBeatsRecord = false;
-    resolveBackendMode();
+    await resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
     resetRound();
@@ -432,6 +434,7 @@
     state.trail.length = 0;
     state.shakeAmount = 0;
     state.score = 0;
+    state.pendingRecordAttempt = null;
     state.stepMs = CONSTANTS.baseStepMs;
     spawnFood();
     updateHud();
@@ -515,6 +518,10 @@
       addShake(10);
       triggerHaptic(CONSTANTS.hapticGameOverMs);
       audio.gameOver();
+      state.pendingRecordAttempt = {
+        baselineTop: Number.isFinite(window.__top1Score) ? window.__top1Score : 0,
+        score: state.score,
+      };
       window.__pendingBeatsRecord = state.score > (window.__top1Score ?? 0);
       announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter för att spela igen`);
       openNameModal();
@@ -900,11 +907,13 @@
       localStorage.setItem("snake-last-player-name", sanitizedName);
       showToast("Poäng sparad i topplistan");
       closeNameModal();
-      await fetchAndRenderLeaderboard();
-      if (window.__pendingBeatsRecord) {
+      const top = await fetchAndRenderLeaderboard();
+      if (window.__pendingBeatsRecord && shouldPlayRecordConfetti(top, sanitizedName, state.score)) {
         await playRecordConfetti();
+        showToast("Nytt rekord!");
       }
       window.__pendingBeatsRecord = false;
+      state.pendingRecordAttempt = null;
     } catch (error) {
       showToast("Kunde inte spara poängen. Försök igen.");
       nameErrorEl.textContent = "Gick inte att spara. Försök igen.";
@@ -932,6 +941,7 @@
         backend: state.backendMode,
         rows: top.length,
       });
+      return top;
     } catch (_error) {
       leaderboardListEl.innerHTML = "";
       leaderboardEmptyEl.hidden = false;
@@ -943,7 +953,24 @@
       console.warn("[Snake] Kunde inte hämta topplistan.", {
         backend: state.backendMode,
       });
+      return [];
     }
+  }
+
+  function shouldPlayRecordConfetti(top, name, score) {
+    if (!Array.isArray(top) || top.length === 0) {
+      return false;
+    }
+
+    const baselineTop = state.pendingRecordAttempt?.baselineTop ?? 0;
+    const newTop = top[0];
+    return (
+      Number.isFinite(score) &&
+      score > baselineTop &&
+      newTop?.name === name &&
+      Number.isFinite(newTop?.score) &&
+      newTop.score === score
+    );
   }
 
   function renderLeaderboard(top) {
@@ -1075,7 +1102,7 @@
       throw new Error("Supabase är inte konfigurerat.");
     }
     const endpoint = `${config.url}/rest/v1/scores`;
-    const headers = buildSupabaseHeaders({ json: true, prefer: "return=minimal" });
+    const headers = buildSupabaseHeaders(config.key, { json: true, prefer: "return=minimal" });
     if (!headers) {
       throw new Error("Supabase är inte konfigurerat.");
     }
@@ -1230,47 +1257,11 @@
     }
 
     if (state.backendMode === "supabase") {
-      const config = getConfig();
-      const headers = buildSupabaseHeaders();
-      if (!config || !headers) {
-        console.info("Backend: local fallback");
-        return;
-      }
-
-      const params = new URLSearchParams({
-        select: "id",
-        limit: "1",
-      });
-
-      try {
-        const response = await fetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
-          method: "GET",
-          headers,
-        });
-        if (response.ok) {
-          console.info("Backend: supabase (live)");
-        } else {
-          console.warn(`Backend: supabase (error ${response.status})`);
-        }
-      } catch (_error) {
-        console.warn("Backend: supabase (error network)");
-      }
+      console.info("Backend: supabase (live)");
       return;
     }
 
-    try {
-      const response = await fetch(CONSTANTS.healthEndpoint, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-      if (response.ok) {
-        console.info("Backend: api (live)");
-      } else {
-        console.warn(`Backend: api (error ${response.status})`);
-      }
-    } catch (_error) {
-      console.warn("Backend: api (error network)");
-    }
+    console.info("Backend: local fallback");
   }
 
   async function playRecordConfetti() {
@@ -1441,17 +1432,20 @@
     return key.split(".").length === 3;
   }
 
-  function buildSupabaseHeaders(options = {}) {
-    const config = getConfig();
-    if (!config) {
+  function buildSupabaseHeaders(token, options = {}) {
+    const normalizedToken = String(token || "").trim();
+    if (!normalizedToken) {
       return null;
     }
 
     const headers = {
-      apikey: config.key,
-      Authorization: isLegacyJwtKey(config.key) ? `Bearer ${config.key}` : config.key,
+      apikey: normalizedToken,
       Accept: "application/json",
     };
+
+    if (isLegacyJwtKey(normalizedToken)) {
+      headers.Authorization = `Bearer ${normalizedToken}`;
+    }
 
     if (options.json) {
       headers["Content-Type"] = "application/json";
@@ -1464,29 +1458,60 @@
     return headers;
   }
 
-  function resolveBackendMode() {
+  async function resolveBackendMode() {
     const supabaseConfig = getConfig();
 
-    if (supabaseConfig) {
-      state.backendMode = "supabase";
+    if (!supabaseConfig) {
+      state.backendMode = "local";
+      state.backendReason = "missing_config";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
-      console.info("[Snake] backend mode decision: supabase (window.SNAKE_CONFIG)");
+      console.info("[Snake] backend mode decision: local (missing config)");
       return;
     }
 
-    if (!isStaticHosting()) {
-      state.backendMode = "api";
+    const headers = buildSupabaseHeaders(supabaseConfig.key);
+    if (!headers) {
+      state.backendMode = "local";
+      state.backendReason = "invalid_token";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
-      console.info("[Snake] backend mode decision: api (same-origin /api)");
+      console.info("[Snake] backend mode decision: local (invalid token)");
       return;
     }
 
-    state.backendMode = "local";
-    state.canUseGlobalLeaderboard = true;
-    state.backendHint = "";
-    console.info("[Snake] backend mode decision: local (missing config)");
+    const params = new URLSearchParams({
+      select: "id",
+      limit: "1",
+    });
+
+    try {
+      const response = await fetch(`${supabaseConfig.url}/rest/v1/scores?${params.toString()}`, {
+        method: "GET",
+        headers,
+      });
+
+      if (response.ok) {
+        state.backendMode = "supabase";
+        state.backendReason = "probe_ok";
+        state.canUseGlobalLeaderboard = true;
+        state.backendHint = "";
+        console.info("[Snake] backend mode decision: supabase (probe ok)");
+        return;
+      }
+
+      state.backendMode = "local";
+      state.backendReason = `probe_http_${response.status}`;
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
+      console.warn(`[Snake] backend mode decision: local (probe http ${response.status})`);
+    } catch (_error) {
+      state.backendMode = "local";
+      state.backendReason = "probe_network";
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
+      console.warn("[Snake] backend mode decision: local (probe network)");
+    }
   }
 
   async function fetchLeaderboardData() {
@@ -1524,7 +1549,7 @@
     });
 
     const endpointPath = `/rest/v1/scores?${params.toString()}`;
-    const headers = buildSupabaseHeaders();
+    const headers = buildSupabaseHeaders(config.key);
     if (!headers) {
       throw new Error("Supabase är inte konfigurerat.");
     }
