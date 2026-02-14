@@ -58,6 +58,10 @@
   const leaderboardStateEl = document.getElementById("leaderboard-state");
   const leaderboardNoticeEl = document.getElementById("leaderboard-notice");
   const apiStatusEl = document.getElementById("api-status");
+  const recordScoreEl = document.getElementById("record-score");
+  const motivationEl = document.getElementById("leaderboard-motivation");
+  const motivationRecordEl = document.getElementById("motivation-record");
+  const leaderboardEmptyEl = document.getElementById("leaderboard-empty");
 
   const modalEl = document.getElementById("name-modal");
   const modalInfoEl = document.getElementById("name-modal-info");
@@ -100,6 +104,8 @@
     backendHint: "",
     isCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
     wasRunningBeforeHidden: false,
+    lastSubmittedName: "",
+    lastSubmittedScore: null,
   };
 
   const audio = createAudio();
@@ -867,6 +873,8 @@
 
     try {
       await postScore(sanitizedName, state.score);
+      state.lastSubmittedName = sanitizedName;
+      state.lastSubmittedScore = state.score;
       localStorage.setItem("snake-last-player-name", sanitizedName);
       showNotice("Poängen är sparad.");
       closeNameModal();
@@ -902,11 +910,39 @@
 
   function renderLeaderboard(top) {
     leaderboardListEl.innerHTML = "";
+    const recordScore = Number.isFinite(top[0]?.score) ? top[0].score : 0;
+    recordScoreEl.textContent = String(recordScore);
+    motivationRecordEl.textContent = String(recordScore);
+
+    if (top.length === 0) {
+      leaderboardEmptyEl.hidden = false;
+      motivationEl.hidden = false;
+      motivationEl.querySelector(".motivation-main").innerHTML =
+        `Slå rekordet: <strong>${recordScore}</strong>`;
+      return;
+    }
+
+    leaderboardEmptyEl.hidden = true;
+    motivationEl.hidden = top.length >= 5;
+
+    if (top.length === 1) {
+      motivationEl.hidden = false;
+      motivationEl.querySelector(".motivation-main").innerHTML =
+        `Din utmaning: slå <strong>${recordScore}</strong>.`;
+    } else if (top.length < 5) {
+      motivationEl.querySelector(".motivation-main").innerHTML =
+        `Slå rekordet: <strong>${recordScore}</strong>`;
+    }
+
+    let youBadgeUsed = false;
 
     for (let i = 0; i < Math.min(5, top.length); i += 1) {
       const row = top[i];
       const item = document.createElement("li");
       item.className = "leaderboard-item";
+      if (i === 0) {
+        item.classList.add("is-top");
+      }
 
       const rank = document.createElement("span");
       rank.className = "rank";
@@ -915,6 +951,28 @@
       const name = document.createElement("span");
       name.className = "player-name";
       name.textContent = row.name;
+
+      if (i === 0) {
+        const badge = document.createElement("span");
+        badge.className = "record-badge";
+        badge.textContent = "Rekord";
+        name.appendChild(badge);
+      }
+
+      const isYou =
+        !youBadgeUsed &&
+        state.lastSubmittedScore !== null &&
+        row.name === state.lastSubmittedName &&
+        row.score === state.lastSubmittedScore;
+
+      if (isYou) {
+        item.classList.add("is-you");
+        const youBadge = document.createElement("span");
+        youBadge.className = "you-badge";
+        youBadge.textContent = "Du";
+        name.appendChild(youBadge);
+        youBadgeUsed = true;
+      }
 
       const score = document.createElement("span");
       score.className = "player-score";

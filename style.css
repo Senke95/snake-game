@@ -78,8 +78,9 @@ body.is-playing {
   height: calc(100svh - 24px);
   max-height: calc(100svh - 24px);
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.8fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(270px, 0.72fr);
   gap: clamp(0.65rem, 1.3vw, 1rem);
+  align-items: start;
 }
 
 .card {
@@ -102,12 +103,15 @@ body.is-playing {
 }
 
 .leaderboard-card {
-  height: 100%;
+  height: calc(100svh - 24px);
+  max-height: calc(100svh - 24px);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: var(--gap);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: clamp(0.45rem, 0.7vh, 0.68rem);
   padding: var(--pad);
   overflow: hidden;
+  position: sticky;
+  top: 12px;
 }
 
 .panel-header h1,
@@ -249,23 +253,32 @@ body.is-playing {
   min-height: 0;
   overflow: auto;
   display: grid;
-  gap: 0.42rem;
+  gap: 0.36rem;
+}
+
+.leaderboard-list-wrap {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+  height: 100%;
 }
 
 .leaderboard-item {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0.7rem;
+  gap: 0.58rem;
   align-items: center;
-  padding: 0.5rem 0.62rem;
+  padding: 0.48rem 0.58rem;
   border-radius: 11px;
-  border: 1px solid rgba(136, 169, 235, 0.2);
-  background: rgba(8, 13, 28, 0.42);
+  border: 1px solid rgba(136, 169, 235, 0.16);
+  background: rgba(8, 13, 28, 0.3);
 }
 
 .rank {
   font-weight: 700;
   color: #96b7f5;
+  min-width: 2.25rem;
 }
 
 .player-name {
@@ -276,14 +289,50 @@ body.is-playing {
 
 .player-score {
   font-weight: 700;
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+.leaderboard-item.is-top {
+  border-color: rgba(255, 219, 130, 0.48);
+  background: linear-gradient(90deg, rgba(255, 218, 114, 0.15), rgba(121, 103, 255, 0.13));
+}
+
+.leaderboard-item.is-top .player-name {
+  font-weight: 700;
+}
+
+.record-badge,
+.you-badge {
+  margin-left: 0.34rem;
+  padding: 0.08rem 0.36rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.record-badge {
+  color: #241000;
+  background: linear-gradient(90deg, #ffd66b, #ffbe55);
+}
+
+.you-badge {
+  color: #07263d;
+  background: linear-gradient(90deg, #8cf7ff, #78d8ff);
+}
+
+.leaderboard-item.is-you {
+  outline: 1px solid rgba(140, 247, 255, 0.54);
+  outline-offset: 0;
 }
 
 .leaderboard-state,
 .leaderboard-notice {
   margin: 0;
-  min-height: 1.2em;
+  min-height: 1.05em;
   color: var(--text-soft);
-  font-size: 0.84rem;
+  font-size: 0.77rem;
 }
 
 .leaderboard-notice {
@@ -292,9 +341,99 @@ body.is-playing {
 
 .api-status {
   margin: 0;
-  min-height: 1.2em;
-  color: #8fa8d9;
-  font-size: 0.78rem;
+  min-height: 1.05em;
+  color: #6f86b0;
+  font-size: 0.73rem;
+}
+
+.leaderboard-footer {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.leaderboard-empty {
+  margin-top: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid rgba(144, 176, 241, 0.22);
+  background: rgba(8, 13, 28, 0.36);
+  padding: 0.72rem;
+}
+
+.leaderboard-empty h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.leaderboard-empty p {
+  margin: 0.34rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.record-strip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 13px;
+  border: 1px solid rgba(182, 207, 255, 0.28);
+  background: linear-gradient(110deg, rgba(255, 222, 126, 0.14), rgba(130, 110, 255, 0.14));
+  padding: 0.58rem 0.65rem;
+}
+
+.record-icon {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 25%, #ffe58b, #ffbf55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.record-icon::before {
+  content: "♕";
+  color: #3a2200;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.record-copy span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.record-copy strong {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.leaderboard-motivation {
+  border-radius: 12px;
+  border: 1px solid rgba(140, 171, 234, 0.2);
+  background: rgba(8, 13, 28, 0.28);
+  padding: 0.55rem 0.62rem;
+}
+
+.motivation-main {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.motivation-main strong {
+  font-size: 1.05rem;
+}
+
+.motivation-tip {
+  margin: 0.28rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .dpad {
@@ -469,6 +608,10 @@ body.is-playing {
   }
 
   .leaderboard-card {
+    position: static;
+    top: auto;
+    height: auto;
+    max-height: none;
     min-height: 220px;
   }
 }
@@ -569,6 +712,10 @@ body.is-playing {
   .btn,
   .toggle {
     font-size: 0.84rem;
+  }
+
+  .record-copy strong {
+    font-size: 1.35rem;
   }
 }
 

@@ -58,10 +58,29 @@
         <h2>Topplista</h2>
         <p>Topp 5 spelare globalt.</p>
       </header>
-      <ol id="leaderboard-list" class="leaderboard-list" aria-live="polite"></ol>
-      <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
-      <p id="leaderboard-notice" class="leaderboard-notice" role="status" aria-live="polite"></p>
-      <p id="api-status" class="api-status" aria-live="polite">API: kontrollerar...</p>
+      <section class="record-strip" aria-label="Nuvarande rekord">
+        <div class="record-icon" aria-hidden="true"></div>
+        <div class="record-copy">
+          <span>Rekord</span>
+          <strong id="record-score">0</strong>
+        </div>
+      </section>
+      <section class="leaderboard-list-wrap">
+        <ol id="leaderboard-list" class="leaderboard-list" aria-live="polite"></ol>
+        <div id="leaderboard-empty" class="leaderboard-empty" hidden>
+          <h3>Inga scores ännu</h3>
+          <p>Bli den första att sätta rekordet.</p>
+        </div>
+      </section>
+      <section id="leaderboard-motivation" class="leaderboard-motivation" hidden>
+        <p class="motivation-main">Slå rekordet: <strong id="motivation-record">0</strong></p>
+        <p class="motivation-tip">Tips: håll dig nära mitten när hastigheten ökar.</p>
+      </section>
+      <footer class="leaderboard-footer">
+        <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
+        <p id="leaderboard-notice" class="leaderboard-notice" role="status" aria-live="polite"></p>
+        <p id="api-status" class="api-status" aria-live="polite">API: kontrollerar...</p>
+      </footer>
     </aside>
   </main>
 
