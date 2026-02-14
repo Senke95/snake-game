@@ -1,72 +1,50 @@
-﻿# Snake med global topplista
+﻿# Snake
 
-Snake är ett statiskt webspel med global topplista. Spelet kan köras på GitHub Pages med Supabase, eller på Cloudflare Pages med Functions + D1.
+Ett statiskt Snake-spel med global topplista.
 
-## Snabbstart lokalt
-
-1. Öppna terminal i projektmappen.
-2. Kör:
+## Kör lokalt
 
 ```bash
 python -m http.server 8000
 ```
 
-3. Öppna `http://localhost:8000`.
+Öppna `http://localhost:8000`.
 
 ## Kontroller
 
-- Pilar eller `WASD`: styr ormen
-- `Enter`: starta eller spela igen
-- `Space`: pausa eller fortsätt
-- `R`: starta om
+- Pilar eller `WASD`: styr ormen.
+- `Enter`: starta eller spela igen.
+- `Space`: pausa eller fortsätt.
+- `R`: starta om.
 
-## Global topplista med Supabase (rekommenderat för GitHub Pages)
+## Supabase för global topplista
 
-1. Skapa tabell och policies
-- Öppna Supabase Dashboard -> `SQL Editor`.
-- Kör hela filen `supabase/schema.sql`.
+1. Kör SQL i `supabase/schema.sql` via Supabase `SQL Editor`.
+2. Sätt `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `config.js`.
+3. Deploya till GitHub Pages.
+4. Verifiera status i UI.
 
-2. Hämta projektets API-inställningar
-- Gå till `Project Settings` -> `API`.
-- Kopiera:
-  - Project URL
-  - `anon` public key
+Status i UI:
+- `API: live`: topplistan är ansluten.
+- `API: fel`: anslutning finns men något blockerar.
+- `API: lokal`: Supabase är inte konfigurerat.
 
-3. Konfigurera frontend
-- Öppna `config.js` i repot.
-- Sätt:
-  - `SUPABASE_URL` till din Project URL.
-  - `SUPABASE_ANON_KEY` till din `anon` key.
+## Nätverksanrop
 
-4. Deploya till GitHub Pages
-- Pusha till `main`.
-- Öppna GitHub Pages-länken.
-- Verifiera att UI visar `API: OK`.
+- `GET /rest/v1/scores?select=id&limit=1` för health check.
+- `GET /rest/v1/scores?...limit=5` för topplista.
+- `POST /rest/v1/scores` för att spara score.
 
-5. Testa spara score
-- Spela tills game over.
-- Skriv namn och klicka `Spara`.
-- Topplistan ska uppdateras globalt.
+## Projektfiler
 
-## Alternativ: Cloudflare Pages + D1
+- `index.html`: struktur och UI.
+- `style.css`: design och responsiv layout.
+- `script.js`: spelmotor, rendering, topplista och status.
+- `config.js`: publik Supabase-konfiguration.
 
-1. Skapa Cloudflare Pages-projekt från repot.
-2. Skapa D1-databas.
-3. Kör `db/schema.sql` i D1 Console.
-4. Lägg D1 binding med namn `DB` i Pages-projektet.
-5. Deploya och verifiera `/api/health`.
+## Mer dokumentation
 
-## API-endpoints
-
-- `GET /api/health` (Cloudflare Functions)
-- `GET /api/leaderboard` (Cloudflare Functions)
-- `POST /api/leaderboard` (Cloudflare Functions)
-
-Supabase-läget använder direktanrop mot `https://<project-ref>.supabase.co/rest/v1/scores`.
-
-## Felsökning
-
-- `API: saknas` på GitHub Pages: kontrollera `config.js` och att `SUPABASE_ANON_KEY` är satt.
-- `HTTP 401/403` vid spara: kontrollera `anon` key och att policies i `supabase/schema.sql` är körda.
-- `HTTP 404` i Cloudflare-läge: kontrollera att Functions är deployade.
-- `API: lokal`: backend saknas, topplistan sparas lokalt i webbläsaren på denna enhet.
+- `docs/ARKITEKTUR.md`
+- `docs/API.md`
+- `docs/KODREFERENS.md`
+- `docs/BEST_PRACTICE_2026.md`

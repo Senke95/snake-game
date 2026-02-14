@@ -1,33 +1,15 @@
 ﻿# Bidra
 
-## Kodstandard
+## Grundregler
 
-- Håll allt enkelt och läsbart.
-- Ingen hemlig data i kod, commits eller issues.
+- Håll ändringar små och tydliga.
 - Svensk UI-text i frontend.
-- UTF-8 i alla textfiler.
+- Inga hemligheter i repo.
+- Uppdatera dokumentation i samma commit som beteendet ändras.
 
-## Branch och commits
+## Före PR
 
-1. Skapa branch från `main`.
-2. Gör små, tydliga commits.
-3. Använd commit-meddelanden som beskriver syftet.
-
-## Checklista före PR
-
-- Spelet startar lokalt via `python -m http.server 8000`.
-- Inga konsolfel i browsern.
-- Layout fungerar i `1366x768`, zoom `100%`.
-- API fungerar för `GET /api/leaderboard` och `POST /api/leaderboard`.
-- Dokumentation uppdaterad om beteende ändrats.
-
-## Säkerhet
-
-- Lägg aldrig in API-nycklar, tokens eller lösenord.
-- Servervalidering ska alltid finnas för indata.
-
-## PR-innehåll
-
-- Beskriv vad som ändrats.
-- Beskriv varför.
-- Lista manuella teststeg.
+- Spelet startar med `python -m http.server 8000`.
+- Inga konsolfel.
+- Layout fungerar i `1366x768` vid `100%` zoom.
+- Topplista fungerar i valt backend-läge.

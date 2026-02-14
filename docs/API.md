@@ -1,77 +1,26 @@
-﻿# API-dokumentation
+﻿# API
 
-Bas-URL i produktion: samma origin som Pages-sajten.
+Supabase används från frontend via REST.
 
-## GET /api/leaderboard
+## Läs topplista
 
-Hämtar topplista.
+`GET /rest/v1/scores?select=name,score,created_at&order=score.desc,created_at.asc&limit=5`
 
-### Svar 200
+## Spara score
 
-```json
-{
-  "top": [
-    {
-      "name": "Spelare",
-      "score": 42,
-      "created_at": "2026-02-14 12:34:56"
-    }
-  ]
-}
-```
+`POST /rest/v1/scores`
 
-### Fel
-
-- `500` om DB-binding saknas.
-
-## POST /api/leaderboard
-
-Sparar en poäng och returnerar uppdaterad topp 5.
-
-### Request body
+Body:
 
 ```json
-{
-  "name": "Spelare",
-  "score": 42
-}
+{ "name": "Spelare", "score": 42 }
 ```
 
-### Regler
+## Health check
 
-- `name`: trimmas, radbrytningar tas bort, max 16 tecken, får inte vara tomt.
-- `score`: heltal, `0 <= score <= 1000000`.
+`GET /rest/v1/scores?select=id&limit=1`
 
-### Svar 201
+## Krav
 
-```json
-{
-  "top": [
-    {
-      "name": "Spelare",
-      "score": 42,
-      "created_at": "2026-02-14 12:34:56"
-    }
-  ]
-}
-```
-
-### Fel
-
-- `400` ogiltig JSON.
-- `400` tomt namn.
-- `400` ogiltig poäng.
-- `500` DB-binding saknas.
-
-## OPTIONS /api/leaderboard
-
-Preflight för CORS.
-
-## Headers
-
-API returnerar bland annat:
-- `Content-Type: application/json; charset=utf-8`
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET,POST,OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type`
-- `Cache-Control: no-store`
+- Tabell `scores` skapad via `supabase/schema.sql`.
+- RLS tillåter `SELECT` och `INSERT` för publishable key.
