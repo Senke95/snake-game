@@ -61,7 +61,7 @@
             Visa
           </button>
         </div>
-        <p>Globala resultat.</p>
+        <p>Global topplista.</p>
       </header>
       <section class="record-strip" aria-label="Nuvarande rekord">
         <div class="record-icon" aria-hidden="true"></div>
@@ -83,6 +83,7 @@
       </section>
       <footer class="leaderboard-footer">
         <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
+        <p id="debug-status" class="debug-status" hidden aria-live="polite"></p>
       </footer>
     </aside>
   </main>
@@ -103,10 +104,10 @@
     </div>
   </div>
 
-  <canvas id="confetti" aria-hidden="true"></canvas>
   <p id="ui-toast" class="ui-toast" role="status" aria-live="polite"></p>
+  <canvas id="confetti-layer" class="confetti-layer" aria-hidden="true"></canvas>
 
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@latest/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-confetti@latest/dist/js-confetti.browser.js"></script>
   <script src="./config.js"></script>
   <script src="script.js"></script>
 </body>

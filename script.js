@@ -18,7 +18,7 @@
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
-    leaderboardFetchLimit: 100,
+    leaderboardFetchLimit: 50,
     maxPlayerName: 16,
     localLeaderboardKey: "snake-local-leaderboard",
   };
@@ -39,7 +39,7 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
-  const confettiCanvas = document.getElementById("confetti");
+  const confettiCanvas = document.getElementById("confetti-layer");
   const reducedMotion =
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -58,6 +58,7 @@
   const leaderboardListEl = document.getElementById("leaderboard-list");
   const leaderboardListWrapEl = document.getElementById("leaderboard-list-wrap");
   const leaderboardStateEl = document.getElementById("leaderboard-state");
+  const debugStatusEl = document.getElementById("debug-status");
   const leaderboardToggleEl = document.getElementById("leaderboard-toggle");
   const recordScoreEl = document.getElementById("record-score");
   const motivationEl = document.getElementById("leaderboard-motivation");
@@ -112,10 +113,12 @@
     lastSubmittedName: "",
     lastSubmittedScore: null,
     pendingRecordAttempt: null,
+    hasCelebratedRecordThisRun: false,
   };
 
   const audio = createAudio();
   const confettiController = createConfettiController();
+  const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
   highScoreEl.textContent = String(state.highScore);
 
   init();
@@ -126,6 +129,7 @@
     window.__pendingBeatsRecord = false;
     await resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
+    document.body.classList.toggle("debug-mode", debugMode);
     wireEvents();
     resetRound();
     resizeCanvas();
@@ -435,6 +439,7 @@
     state.shakeAmount = 0;
     state.score = 0;
     state.pendingRecordAttempt = null;
+    state.hasCelebratedRecordThisRun = false;
     state.stepMs = CONSTANTS.baseStepMs;
     spawnFood();
     updateHud();
@@ -908,8 +913,13 @@
       showToast("Poäng sparad i topplistan");
       closeNameModal();
       const top = await fetchAndRenderLeaderboard();
-      if (window.__pendingBeatsRecord && shouldPlayRecordConfetti(top, sanitizedName, state.score)) {
+      if (
+        !state.hasCelebratedRecordThisRun &&
+        window.__pendingBeatsRecord &&
+        shouldPlayRecordConfetti(top, sanitizedName, state.score)
+      ) {
         await playRecordConfetti();
+        state.hasCelebratedRecordThisRun = true;
         showToast("Nytt rekord!");
       }
       window.__pendingBeatsRecord = false;
@@ -1240,7 +1250,7 @@
 
   function explainHttpFailure(status, body) {
     if (status === 404) {
-      return "API saknas. Kör spelet på Cloudflare Pages för global topplista.";
+      return "Backend saknas för poängsparning.";
     }
 
     if (status === 500 && body.includes("D1 binding DB saknas")) {
@@ -1251,16 +1261,34 @@
   }
 
   async function checkApiStatus() {
-    if (state.backendMode === "local" || state.backendMode === "none") {
-      console.info("Backend: local fallback");
+    if (!debugMode) {
+      if (debugStatusEl) {
+        debugStatusEl.hidden = true;
+      }
+      if (state.backendMode === "supabase") {
+        console.info("Backend: supabase (live)");
+      } else {
+        console.info("Backend: local fallback");
+      }
       return;
     }
 
+    if (debugStatusEl) {
+      debugStatusEl.hidden = false;
+    }
+
     if (state.backendMode === "supabase") {
+      const reason = state.backendReason === "probe_ok" ? "Supabase aktiv." : `Supabase med varning (${state.backendReason}).`;
+      if (debugStatusEl) {
+        debugStatusEl.textContent = `Backendstatus: ${reason}`;
+      }
       console.info("Backend: supabase (live)");
       return;
     }
 
+    if (debugStatusEl) {
+      debugStatusEl.textContent = "Backendstatus: Lokal reserv aktiv.";
+    }
     console.info("Backend: local fallback");
   }
 
@@ -1310,96 +1338,33 @@
   }
 
   function createConfettiController() {
-    let fire = null;
-    let starShape = null;
+    let jsConfetti = null;
 
     function ensure() {
-      if (fire || !confettiCanvas || typeof window.confetti !== "function") {
+      if (jsConfetti || !confettiCanvas || typeof window.JSConfetti !== "function") {
         return;
       }
-
-      resizeConfettiCanvas();
-      fire = window.confetti.create(confettiCanvas, { resize: true, useWorker: true });
-
-      if (typeof window.confetti.shapeFromPath === "function") {
-        try {
-          starShape = window.confetti.shapeFromPath({
-            path: "M12 0L15.7 7.6L24 8.7L18 14.4L19.4 22.6L12 18.7L4.6 22.6L6 14.4L0 8.7L8.3 7.6Z",
-          });
-        } catch (_error) {
-          starShape = null;
-        }
-      }
-    }
-
-    function shapes() {
-      if (!starShape) {
-        return undefined;
-      }
-      return ["square", "circle", "square", "circle", "square", "circle", "square", starShape, starShape, starShape];
+      jsConfetti = new window.JSConfetti({ canvas: confettiCanvas });
     }
 
     async function play() {
       try {
         ensure();
-        if (!fire) {
+        if (!jsConfetti) {
           return;
         }
 
-        const common = {
-          colors: ["#ffffff", "#ffd66b", "#8cf7ff", "#7c6cff", "#ff77d9"],
-          shapes: shapes(),
-        };
-
-        fire({
-          ...common,
-          particleCount: 140,
-          spread: 80,
-          startVelocity: 55,
-          gravity: 1.0,
-          scalar: 1.0,
-          origin: { x: 0.5, y: 0.05 },
+        await jsConfetti.addConfetti({
+          emojis: ["✨", "🌟", "⚡️"],
+          emojiSize: 48,
+          confettiNumber: 34,
         });
-
-        await sleep(150);
-        for (let i = 0; i < 10; i += 1) {
-          fire({
-            ...common,
-            particleCount: 24,
-            spread: 55,
-            startVelocity: 38,
-            gravity: 1.15,
-            ticks: 180,
-            angle: 60,
-            origin: { x: 0.05, y: 0.22 },
-          });
-          fire({
-            ...common,
-            particleCount: 24,
-            spread: 55,
-            startVelocity: 38,
-            gravity: 1.15,
-            ticks: 180,
-            angle: 120,
-            origin: { x: 0.95, y: 0.22 },
-          });
-          await sleep(100);
-        }
-
-        await sleep(50);
-        for (let i = 0; i < 6; i += 1) {
-          fire({
-            ...common,
-            particleCount: 18,
-            spread: 45,
-            startVelocity: 18,
-            gravity: 0.6,
-            ticks: 220,
-            scalar: 0.85,
-            origin: { x: 0.14 + Math.random() * 0.72, y: 0 },
-          });
-          await sleep(250);
-        }
+        await sleep(280);
+        await jsConfetti.addConfetti({
+          confettiColors: ["#5ce9bf", "#74b5ff", "#ffd66b", "#ffffff", "#ff77d9"],
+          confettiRadius: 5,
+          confettiNumber: 220,
+        });
       } catch (_error) {
         // Confetti is optional. Ignore runtime failures.
       }
@@ -1438,10 +1403,7 @@
       return null;
     }
 
-    const headers = {
-      apikey: normalizedToken,
-      Accept: "application/json",
-    };
+    const headers = { apikey: normalizedToken };
 
     if (isLegacyJwtKey(normalizedToken)) {
       headers.Authorization = `Bearer ${normalizedToken}`;
@@ -1472,13 +1434,17 @@
 
     const headers = buildSupabaseHeaders(supabaseConfig.key);
     if (!headers) {
-      state.backendMode = "local";
+      state.backendMode = "supabase";
       state.backendReason = "invalid_token";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
-      console.info("[Snake] backend mode decision: local (invalid token)");
+      console.warn("[Snake] backend mode decision: supabase (invalid token format)");
       return;
     }
+
+    state.backendMode = "supabase";
+    state.canUseGlobalLeaderboard = true;
+    state.backendHint = "";
 
     const params = new URLSearchParams({
       select: "id",
@@ -1492,25 +1458,16 @@
       });
 
       if (response.ok) {
-        state.backendMode = "supabase";
         state.backendReason = "probe_ok";
-        state.canUseGlobalLeaderboard = true;
-        state.backendHint = "";
         console.info("[Snake] backend mode decision: supabase (probe ok)");
         return;
       }
 
-      state.backendMode = "local";
       state.backendReason = `probe_http_${response.status}`;
-      state.canUseGlobalLeaderboard = true;
-      state.backendHint = "";
-      console.warn(`[Snake] backend mode decision: local (probe http ${response.status})`);
+      console.warn(`[Snake] backend probe failed (http ${response.status})`);
     } catch (_error) {
-      state.backendMode = "local";
       state.backendReason = "probe_network";
-      state.canUseGlobalLeaderboard = true;
-      state.backendHint = "";
-      console.warn("[Snake] backend mode decision: local (probe network)");
+      console.warn("[Snake] backend probe failed (network)");
     }
   }
 

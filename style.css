@@ -31,7 +31,7 @@ body {
 
 body {
   position: relative;
-  min-height: 100svh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding:
@@ -76,8 +76,8 @@ body.is-playing {
 
 .layout {
   width: min(96vw, 1180px);
-  height: calc(100svh - 24px);
-  max-height: calc(100svh - 24px);
+  height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 24px);
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(270px, 0.72fr);
   gap: clamp(0.65rem, 1.3vw, 1rem);
@@ -104,8 +104,8 @@ body.is-playing {
 }
 
 .leaderboard-card {
-  height: calc(100svh - 24px);
-  max-height: calc(100svh - 24px);
+  height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 24px);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: clamp(0.45rem, 0.7vh, 0.68rem);
@@ -378,6 +378,16 @@ body.is-playing {
   gap: 0.15rem;
 }
 
+.debug-status {
+  margin: 0;
+  font-size: 0.72rem;
+  color: rgba(172, 188, 219, 0.72);
+}
+
+.debug-mode .debug-status[hidden] {
+  display: none;
+}
+
 .leaderboard-empty {
   margin-top: 0.35rem;
   border-radius: 12px;
@@ -524,7 +534,7 @@ body.is-playing {
   display: flex;
 }
 
-#confetti {
+.confetti-layer {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -653,8 +663,8 @@ body.is-playing {
 @media (max-width: 1023px) and (min-width: 768px) {
   .layout {
     grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.75fr);
-    height: calc(100svh - 16px);
-    max-height: calc(100svh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
   }
 }
 
@@ -663,7 +673,7 @@ body.is-playing {
     grid-template-columns: 1fr;
     height: auto;
     max-height: none;
-    min-height: calc(100svh - 16px);
+    min-height: calc(100dvh - 16px);
     overflow-y: auto;
     gap: 0.58rem;
     padding-bottom: max(env(safe-area-inset-bottom), 0.45rem);
