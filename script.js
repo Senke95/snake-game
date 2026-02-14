@@ -18,6 +18,7 @@
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
+    configPath: "./config.js",
     maxPlayerName: 16,
     localLeaderboardKey: "snake-local-leaderboard",
   };
@@ -107,6 +108,7 @@
     wasRunningBeforeHidden: false,
     lastSubmittedName: "",
     lastSubmittedScore: null,
+    supabaseConfig: null,
   };
 
   const audio = createAudio();
@@ -116,9 +118,10 @@
   init();
 
   // Initierar appens startflöde och första render.
-  function init() {
+  async function init() {
     window.__top1Score = Number.isFinite(window.__top1Score) ? window.__top1Score : 0;
     window.__pendingBeatsRecord = false;
+    await loadRuntimeConfig();
     resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
@@ -1041,14 +1044,15 @@
   }
 
   async function postScoreSupabase(name, score) {
-    const config = getSupabaseConfig();
+    const config = getConfig();
+    if (!config) {
+      throw new Error("Supabase är inte konfigurerat.");
+    }
     const endpoint = `${config.url}/rest/v1/scores`;
-    const headers = {
-      apikey: config.anonKey,
-      Authorization: `Bearer ${config.anonKey}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    };
+    const headers = buildSupabaseHeaders({ json: true, prefer: "return=minimal" });
+    if (!headers) {
+      throw new Error("Supabase är inte konfigurerat.");
+    }
 
     let response;
     try {
@@ -1066,8 +1070,14 @@
     if (!response.ok) {
       const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
       const details = responseBody ? ` Svar: ${responseBody}` : "";
-      console.warn("[Snake] Supabase submit misslyckades.", { status: response.status });
-      throw new Error(`Kunde inte spara (HTTP ${response.status}). Kontrollera Supabase-konfiguration.${details}`);
+      console.warn("[Snake] Supabase submit misslyckades.", {
+        mode: state.backendMode,
+        endpoint: "/rest/v1/scores",
+        status: response.status,
+      });
+      throw new Error(
+        `Kunde inte spara (HTTP ${response.status}). Kontrollera RLS och API-nyckel i Supabase.${details}`
+      );
     }
 
     const data = await fetchLeaderboardSupabase(config);
@@ -1162,43 +1172,69 @@
       }
     };
 
+    const sanitizeStatusReason = (status, detail) => {
+      const compactDetail = String(detail || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (status) {
+        return `Kunde inte nå Supabase (HTTP ${status}). Kontrollera RLS och API-nyckel.`;
+      }
+      if (compactDetail) {
+        return `Kunde inte nå Supabase. ${compactDetail}`;
+      }
+      return "Kunde inte nå Supabase. Kontrollera RLS och API-nyckel.";
+    };
+
     if (state.backendMode === "local") {
-      setStatus("API: fel", "Ingen global backend i denna miljö.");
+      setStatus("API: lokal", "Supabase är inte konfigurerat.");
       return;
     }
 
     if (state.backendMode === "none") {
-      setStatus("API: fel", "Ingen backend är konfigurerad.");
+      setStatus("API: lokal", "Supabase är inte konfigurerat.");
       return;
     }
 
     if (state.backendMode === "supabase") {
       try {
-        const config = getSupabaseConfig();
+        const config = getConfig();
+        if (!config) {
+          setStatus("API: lokal", "Supabase är inte konfigurerat.");
+          return;
+        }
         const params = new URLSearchParams({
           select: "id",
           limit: "1",
         });
+        const endpointPath = `/rest/v1/scores?${params.toString()}`;
+        const headers = buildSupabaseHeaders();
+        if (!headers) {
+          setStatus("API: lokal", "Supabase är inte konfigurerat.");
+          return;
+        }
         const response = await timeoutFetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
           method: "GET",
-          headers: {
-            apikey: config.anonKey,
-            Authorization: `Bearer ${config.anonKey}`,
-            Accept: "application/json",
-          },
+          headers,
+        });
+        console.info("[Snake] API hälsokontroll.", {
+          mode: state.backendMode,
+          endpoint: endpointPath,
+          status: response.status,
         });
 
         if (!response.ok) {
           const body = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
-          const reason = body || `HTTP ${response.status}`;
-          setStatus("API: fel", `Supabase svarade med fel: ${reason}`);
+          setStatus("API: fel", sanitizeStatusReason(response.status, body));
           return;
         }
 
         setStatus("API: live", "Supabase svarar.");
       } catch (error) {
         const reason = error?.name === "AbortError" ? "Timeout efter 5 sekunder." : shortReason(error);
-        setStatus("API: fel", `Supabase kunde inte nås: ${reason}`);
+        console.warn("[Snake] API hälsokontroll misslyckades.", {
+          mode: state.backendMode,
+          endpoint: "/rest/v1/scores",
+          message: reason,
+        });
+        setStatus("API: fel", sanitizeStatusReason(null, reason));
       }
       return;
     }
@@ -1376,10 +1412,126 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  function resolveBackendMode() {
-    const supabaseConfig = getSupabaseConfig();
+  async function loadRuntimeConfig() {
+    const fromWindow = readSupabaseConfigFromWindow();
+    if (fromWindow) {
+      state.supabaseConfig = fromWindow;
+      return;
+    }
 
-    if (supabaseConfig.url && supabaseConfig.anonKey) {
+    const fromFile = await readSupabaseConfigFromFile();
+    state.supabaseConfig = fromFile;
+  }
+
+  function getConfig() {
+    const config = state.supabaseConfig;
+    if (!config?.url || !config?.key) {
+      return null;
+    }
+
+    return {
+      url: config.url,
+      key: config.key,
+    };
+  }
+
+  function readSupabaseConfigFromWindow() {
+    const globalConfig = window.SNAKE_CONFIG || {};
+    const fromObjectUrl = String(globalConfig.SUPABASE_URL || "").trim();
+    const fromObjectKey = String(globalConfig.SUPABASE_ANON_KEY || "").trim();
+    const fromGlobalUrl = String(window.SUPABASE_URL || "").trim();
+    const fromGlobalKey = String(window.SUPABASE_ANON_KEY || "").trim();
+
+    const rawUrl = fromObjectUrl || fromGlobalUrl || CONSTANTS.supabaseDefaultUrl;
+    const rawKey = fromObjectKey || fromGlobalKey;
+
+    if (!rawUrl || !rawKey) {
+      return null;
+    }
+
+    return {
+      url: rawUrl.replace(/\/+$/, ""),
+      key: rawKey,
+    };
+  }
+
+  async function readSupabaseConfigFromFile() {
+    let source = "";
+
+    try {
+      const response = await fetch(CONSTANTS.configPath, {
+        method: "GET",
+        headers: { Accept: "text/plain" },
+      });
+      if (!response.ok) {
+        return null;
+      }
+      source = await response.text();
+    } catch (_error) {
+      return null;
+    }
+
+    const exportedUrl = readExportConst(source, "SUPABASE_URL");
+    const exportedKey = readExportConst(source, "SUPABASE_ANON_KEY");
+    const objectUrl = readObjectLiteralValue(source, "SUPABASE_URL");
+    const objectKey = readObjectLiteralValue(source, "SUPABASE_ANON_KEY");
+
+    const rawUrl = exportedUrl || objectUrl || CONSTANTS.supabaseDefaultUrl;
+    const rawKey = exportedKey || objectKey;
+
+    if (!rawUrl || !rawKey) {
+      return null;
+    }
+
+    return {
+      url: rawUrl.replace(/\/+$/, ""),
+      key: rawKey,
+    };
+  }
+
+  function readExportConst(source, keyName) {
+    const regex = new RegExp(`export\\s+const\\s+${keyName}\\s*=\\s*["']([^"']+)["']`, "i");
+    const match = source.match(regex);
+    return match?.[1]?.trim() || "";
+  }
+
+  function readObjectLiteralValue(source, keyName) {
+    const regex = new RegExp(`${keyName}\\s*:\\s*["']([^"']+)["']`, "i");
+    const match = source.match(regex);
+    return match?.[1]?.trim() || "";
+  }
+
+  function isLegacyJwtKey(key) {
+    return key.split(".").length === 3;
+  }
+
+  function buildSupabaseHeaders(options = {}) {
+    const config = getConfig();
+    if (!config) {
+      return null;
+    }
+
+    const headers = {
+      apikey: config.key,
+      Authorization: isLegacyJwtKey(config.key) ? `Bearer ${config.key}` : config.key,
+      Accept: "application/json",
+    };
+
+    if (options.json) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    if (options.prefer) {
+      headers.Prefer = options.prefer;
+    }
+
+    return headers;
+  }
+
+  function resolveBackendMode() {
+    const supabaseConfig = getConfig();
+
+    if (supabaseConfig) {
       state.backendMode = "supabase";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
@@ -1398,25 +1550,13 @@
     state.backendHint = "";
   }
 
-  function getSupabaseConfig() {
-    const globalConfig = window.SNAKE_CONFIG || {};
-    const rawUrl = String(globalConfig.SUPABASE_URL || CONSTANTS.supabaseDefaultUrl).trim();
-    const rawAnonKey = String(globalConfig.SUPABASE_ANON_KEY || "").trim();
-    const url = rawUrl.replace(/\/+$/, "");
-
-    return {
-      url,
-      anonKey: rawAnonKey,
-    };
-  }
-
   async function fetchLeaderboardData() {
     if (state.backendMode === "local") {
       return fetchLeaderboardLocal();
     }
 
     if (state.backendMode === "supabase") {
-      const config = getSupabaseConfig();
+      const config = getConfig();
       return fetchLeaderboardSupabase(config);
     }
 
@@ -1434,23 +1574,32 @@
   }
 
   async function fetchLeaderboardSupabase(config, limit = 5) {
+    if (!config) {
+      throw new Error("Supabase är inte konfigurerat.");
+    }
+
     const params = new URLSearchParams({
       select: "name,score,created_at",
       order: "score.desc,created_at.asc",
       limit: String(limit),
     });
 
+    const endpointPath = `/rest/v1/scores?${params.toString()}`;
+    const headers = buildSupabaseHeaders();
+    if (!headers) {
+      throw new Error("Supabase är inte konfigurerat.");
+    }
     const response = await fetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
       method: "GET",
-      headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-        Accept: "application/json",
-      },
+      headers,
     });
 
     if (!response.ok) {
-      console.warn("[Snake] Supabase topplista misslyckades.", { status: response.status });
+      console.warn("[Snake] Supabase topplista misslyckades.", {
+        mode: state.backendMode,
+        endpoint: endpointPath,
+        status: response.status,
+      });
       throw new Error("Kunde inte läsa Supabase-topplistan");
     }
 
