@@ -10,8 +10,8 @@
   <div class="bg-orb orb-a" aria-hidden="true"></div>
   <div class="bg-orb orb-b" aria-hidden="true"></div>
 
-  <main class="shell">
-    <section class="card" aria-label="Snake spelpanel">
+  <main class="layout">
+    <section class="card game-card" aria-label="Snake spelpanel">
       <header class="panel-header">
         <h1>Snake</h1>
         <p>Pilar eller WASD. Space: pausa. Enter: starta. R: starta om.</p>
@@ -51,7 +51,33 @@
         <button type="button" class="dpad-btn down" data-dir="down" aria-label="Ner">&#9660;</button>
       </section>
     </section>
+
+    <aside class="card leaderboard-card" aria-label="Topplista">
+      <header class="panel-header compact">
+        <h2>Topplista</h2>
+        <p>Topp 5 spelare globalt.</p>
+      </header>
+      <ol id="leaderboard-list" class="leaderboard-list" aria-live="polite"></ol>
+      <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
+      <p id="leaderboard-notice" class="leaderboard-notice" role="status" aria-live="polite"></p>
+    </aside>
   </main>
+
+  <div id="name-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-modal-title" aria-hidden="true">
+    <div class="modal-card">
+      <h3 id="name-modal-title">Skriv ditt namn</h3>
+      <p>Din poäng kan sparas i topplistan.</p>
+      <form id="name-form" novalidate>
+        <label for="player-name" class="sr-only">Ditt namn</label>
+        <input id="player-name" name="playerName" type="text" maxlength="16" placeholder="Ditt namn" autocomplete="nickname" />
+        <p id="name-error" class="name-error" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button id="save-name-btn" class="btn btn-primary" type="submit">Spara</button>
+          <button id="cancel-name-btn" class="btn" type="button">Avbryt</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>

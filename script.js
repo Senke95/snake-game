@@ -10,6 +10,8 @@
     particleBurstCount: 14,
     trailMax: 22,
     swipeThreshold: 26,
+    leaderboardEndpoint: "/api/leaderboard",
+    maxPlayerName: 16,
   };
 
   const GAME_MODE = {
@@ -40,6 +42,17 @@
   const soundToggle = document.getElementById("sound-toggle");
   const effectsToggle = document.getElementById("effects-toggle");
 
+  const leaderboardListEl = document.getElementById("leaderboard-list");
+  const leaderboardStateEl = document.getElementById("leaderboard-state");
+  const leaderboardNoticeEl = document.getElementById("leaderboard-notice");
+
+  const modalEl = document.getElementById("name-modal");
+  const nameFormEl = document.getElementById("name-form");
+  const nameInputEl = document.getElementById("player-name");
+  const nameErrorEl = document.getElementById("name-error");
+  const saveNameBtnEl = document.getElementById("save-name-btn");
+  const cancelNameBtnEl = document.getElementById("cancel-name-btn");
+
   const dpadButtons = Array.from(document.querySelectorAll(".dpad-btn"));
 
   const offscreenCanvas = document.createElement("canvas");
@@ -65,6 +78,7 @@
     effectsEnabled: true,
     audioUnlocked: false,
     touchStart: null,
+    noticeTimer: 0,
   };
 
   const audio = createAudio();
@@ -79,6 +93,7 @@
     updateHud();
     updateControlStates();
     announce("Tryck Enter för att starta");
+    fetchAndRenderLeaderboard();
     requestAnimationFrame(loop);
 
     if (typeof ResizeObserver === "function") {
@@ -179,10 +194,27 @@
       },
       { passive: true }
     );
+
+    modalEl.addEventListener("click", (event) => {
+      if (event.target === modalEl) {
+        closeNameModal();
+      }
+    });
+
+    nameFormEl.addEventListener("submit", submitScore);
+
+    cancelNameBtnEl.addEventListener("click", () => {
+      closeNameModal();
+    });
   }
 
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
+
+    if (key === "escape" && modalEl.classList.contains("is-open")) {
+      closeNameModal();
+      return;
+    }
 
     if (
       key === "arrowup" ||
@@ -192,6 +224,10 @@
       key === " "
     ) {
       event.preventDefault();
+    }
+
+    if (modalEl.classList.contains("is-open")) {
+      return;
     }
 
     unlockAudioFromGesture();
@@ -247,6 +283,7 @@
       resetRound();
     }
 
+    closeNameModal();
     setMode(GAME_MODE.running);
     announce("Spelet startat");
   }
@@ -265,6 +302,7 @@
   }
 
   function restartGame() {
+    closeNameModal();
     resetRound();
     setMode(GAME_MODE.running);
     announce("Spelet startat om");
@@ -375,6 +413,7 @@
       addShake(10);
       audio.gameOver();
       announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter för att spela igen`);
+      openNameModal();
       return;
     }
 
@@ -574,7 +613,7 @@
       }
 
       const tone = 1 - i / Math.max(1, state.snake.length - 1);
-      const color = i === 0 ? `rgb(98 245 196)` : `rgb(${48 + tone * 45} ${164 + tone * 50} ${132 + tone * 28})`;
+      const color = i === 0 ? "rgb(98 245 196)" : `rgb(${48 + tone * 45} ${164 + tone * 50} ${132 + tone * 28})`;
       ctx.fillStyle = color;
       roundRectFill(ctx, x, y, bodySize, bodySize, tile * 0.24);
       ctx.shadowBlur = 0;
@@ -708,6 +747,137 @@
     }
   }
 
+  function openNameModal() {
+    nameErrorEl.textContent = "";
+    saveNameBtnEl.disabled = false;
+    cancelNameBtnEl.disabled = false;
+    modalEl.classList.add("is-open");
+    modalEl.setAttribute("aria-hidden", "false");
+    setTimeout(() => {
+      nameInputEl.focus();
+      nameInputEl.select();
+    }, 0);
+  }
+
+  function closeNameModal() {
+    modalEl.classList.remove("is-open");
+    modalEl.setAttribute("aria-hidden", "true");
+    nameErrorEl.textContent = "";
+  }
+
+  async function submitScore(event) {
+    event.preventDefault();
+
+    const sanitizedName = sanitizePlayerName(nameInputEl.value);
+    if (!sanitizedName) {
+      nameErrorEl.textContent = "Skriv ett namn mellan 1 och 16 tecken.";
+      return;
+    }
+
+    nameErrorEl.textContent = "";
+    saveNameBtnEl.disabled = true;
+    cancelNameBtnEl.disabled = true;
+
+    try {
+      await postScore(sanitizedName, state.score);
+      localStorage.setItem("snake-last-player-name", sanitizedName);
+      showNotice("Poängen är sparad.");
+      closeNameModal();
+      await fetchAndRenderLeaderboard();
+    } catch (_error) {
+      showNotice("Kunde inte spara score just nu.");
+      nameErrorEl.textContent = "Det gick inte att spara. Försök igen.";
+    } finally {
+      saveNameBtnEl.disabled = false;
+      cancelNameBtnEl.disabled = false;
+    }
+  }
+
+  async function fetchAndRenderLeaderboard() {
+    leaderboardStateEl.textContent = "Laddar topplista...";
+
+    try {
+      const response = await fetch(CONSTANTS.leaderboardEndpoint, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error("Kunde inte hämta topplistan");
+      }
+
+      const data = await response.json();
+      const top = Array.isArray(data.top) ? data.top : [];
+      renderLeaderboard(top);
+      leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+    } catch (_error) {
+      leaderboardListEl.innerHTML = "";
+      leaderboardStateEl.textContent = "Kunde inte hämta topplistan just nu.";
+    }
+  }
+
+  function renderLeaderboard(top) {
+    leaderboardListEl.innerHTML = "";
+
+    for (let i = 0; i < Math.min(5, top.length); i += 1) {
+      const row = top[i];
+      const item = document.createElement("li");
+      item.className = "leaderboard-item";
+
+      const rank = document.createElement("span");
+      rank.className = "rank";
+      rank.textContent = `#${i + 1}`;
+
+      const name = document.createElement("span");
+      name.className = "player-name";
+      name.textContent = row.name;
+
+      const score = document.createElement("span");
+      score.className = "player-score";
+      score.textContent = String(row.score);
+
+      item.append(rank, name, score);
+      leaderboardListEl.appendChild(item);
+    }
+  }
+
+  async function postScore(name, score) {
+    const response = await fetch(CONSTANTS.leaderboardEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ name, score }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Kunde inte spara poängen");
+    }
+
+    const data = await response.json();
+    const top = Array.isArray(data.top) ? data.top : [];
+    renderLeaderboard(top);
+    leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+  }
+
+  function sanitizePlayerName(value) {
+    const withoutBreaks = String(value || "").replace(/[\r\n]+/g, " ");
+    const trimmed = withoutBreaks.trim();
+    if (!trimmed) {
+      return "";
+    }
+    return trimmed.slice(0, CONSTANTS.maxPlayerName);
+  }
+
+  function showNotice(message) {
+    leaderboardNoticeEl.textContent = message;
+    clearTimeout(state.noticeTimer);
+    state.noticeTimer = setTimeout(() => {
+      leaderboardNoticeEl.textContent = "";
+    }, 3000);
+  }
+
   function roundRectFill(context, x, y, width, height, radius) {
     const r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
     context.beginPath();
@@ -818,6 +988,10 @@
   function readHighScore() {
     try {
       const value = Number(localStorage.getItem("snake-high-score") || 0);
+      if (!nameInputEl.value) {
+        const lastName = localStorage.getItem("snake-last-player-name") || "";
+        nameInputEl.value = lastName.slice(0, CONSTANTS.maxPlayerName);
+      }
       return Number.isFinite(value) ? Math.max(0, value) : 0;
     } catch (_error) {
       return 0;
