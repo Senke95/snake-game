@@ -956,8 +956,8 @@
       leaderboardListEl.innerHTML = "";
       leaderboardEmptyEl.hidden = false;
       motivationEl.hidden = false;
-      leaderboardStateEl.textContent = "Topplistan är tillfälligt otillgänglig.";
-      leaderboardEmptyEl.querySelector("h3").textContent = "Topplistan är tillfälligt otillgänglig.";
+      leaderboardStateEl.textContent = "Topplistan kan inte uppdateras just nu.";
+      leaderboardEmptyEl.querySelector("h3").textContent = "Topplistan kan inte uppdateras just nu.";
       leaderboardEmptyEl.querySelector("p").textContent = "Spelet fungerar som vanligt. Försök igen snart.";
       updateLeaderboardScrollFade();
       console.warn("[Snake] Kunde inte hämta topplistan.", {
@@ -1338,32 +1338,62 @@
   }
 
   function createConfettiController() {
-    let jsConfetti = null;
+    let fire = null;
+
+    function getRecordOrigin() {
+      const recordEl = document.querySelector(".record-strip");
+      if (!recordEl) {
+        return { x: 0.78, y: 0.12 };
+      }
+
+      const rect = recordEl.getBoundingClientRect();
+      const x = Math.min(0.95, Math.max(0.05, (rect.left + rect.width * 0.55) / window.innerWidth));
+      const y = Math.min(0.45, Math.max(0.02, rect.top / window.innerHeight));
+      return { x, y };
+    }
 
     function ensure() {
-      if (jsConfetti || !confettiCanvas || typeof window.JSConfetti !== "function") {
+      if (fire || !confettiCanvas || typeof window.confetti !== "function") {
         return;
       }
-      jsConfetti = new window.JSConfetti({ canvas: confettiCanvas });
+
+      resizeConfettiCanvas();
+      fire = window.confetti.create(confettiCanvas, {
+        resize: true,
+        useWorker: true,
+      });
     }
 
     async function play() {
       try {
         ensure();
-        if (!jsConfetti) {
+        if (!fire) {
           return;
         }
 
-        await jsConfetti.addConfetti({
-          emojis: ["✨", "🌟", "⚡️"],
-          emojiSize: 48,
-          confettiNumber: 34,
+        const origin = getRecordOrigin();
+
+        fire({
+          particleCount: 78,
+          spread: 58,
+          startVelocity: 46,
+          gravity: 0.95,
+          scalar: 0.92,
+          origin,
+          colors: ["#ffffff", "#ffd66b", "#8cf7ff", "#7c6cff"],
         });
-        await sleep(280);
-        await jsConfetti.addConfetti({
-          confettiColors: ["#5ce9bf", "#74b5ff", "#ffd66b", "#ffffff", "#ff77d9"],
-          confettiRadius: 5,
-          confettiNumber: 220,
+
+        await sleep(240);
+
+        fire({
+          particleCount: 110,
+          spread: 86,
+          startVelocity: 32,
+          gravity: 0.74,
+          ticks: 220,
+          scalar: 1.05,
+          origin: { x: origin.x, y: Math.max(0.03, origin.y - 0.03) },
+          colors: ["#5ce9bf", "#74b5ff", "#ffd66b", "#ffffff", "#ff77d9"],
         });
       } catch (_error) {
         // Confetti is optional. Ignore runtime failures.
