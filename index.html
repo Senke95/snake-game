@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-orb orb-a" aria-hidden="true"></div>
+  <div class="bg-orb orb-b" aria-hidden="true"></div>
+
+  <main class="shell">
+    <section class="card" aria-label="Snake spelpanel">
+      <header class="panel-header">
+        <h1>Snake</h1>
+        <p>Pilar eller WASD. Space: pausa. Enter: starta. R: starta om.</p>
+      </header>
+
+      <section class="hud-row" aria-label="Speldata">
+        <div class="hud-item"><span>Poäng</span><strong id="score">0</strong></div>
+        <div class="hud-item"><span>Högsta</span><strong id="high-score">0</strong></div>
+        <div class="hud-item"><span>Hastighet</span><strong id="speed">1.0x</strong></div>
+      </section>
+
+      <section class="control-row" aria-label="Spelkontroller">
+        <button id="start-btn" class="btn btn-primary" type="button">Starta</button>
+        <button id="pause-btn" class="btn" type="button">Pausa</button>
+        <button id="restart-btn" class="btn" type="button">Starta om</button>
+        <label class="toggle" for="sound-toggle">
+          <input id="sound-toggle" type="checkbox" checked />
+          <span>Ljud</span>
+        </label>
+        <label class="toggle" for="effects-toggle">
+          <input id="effects-toggle" type="checkbox" checked />
+          <span>Effekter</span>
+        </label>
+      </section>
+
+      <section class="canvas-stage" aria-label="Spelyta">
+        <div class="canvas-wrap">
+          <canvas id="game" width="640" height="640" aria-label="Snake spel"></canvas>
+        </div>
+        <p id="sr-status" class="sr-only" aria-live="polite">Tryck Enter för att starta</p>
+      </section>
+
+      <section class="dpad" aria-label="Mobilkontroller">
+        <button type="button" class="dpad-btn up" data-dir="up" aria-label="Upp">&#9650;</button>
+        <button type="button" class="dpad-btn left" data-dir="left" aria-label="Vänster">&#9664;</button>
+        <button type="button" class="dpad-btn right" data-dir="right" aria-label="Höger">&#9654;</button>
+        <button type="button" class="dpad-btn down" data-dir="down" aria-label="Ner">&#9660;</button>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
