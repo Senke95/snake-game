@@ -55,7 +55,12 @@
 
     <aside class="card leaderboard-card" aria-label="Topplista">
       <header class="panel-header compact">
-        <h2>Topplista</h2>
+        <div class="leaderboard-head-row">
+          <h2>Topplista</h2>
+          <button id="leaderboard-toggle" class="leaderboard-toggle" type="button" aria-expanded="false">
+            Visa
+          </button>
+        </div>
         <p>Globala resultat.</p>
       </header>
       <section class="record-strip" aria-label="Nuvarande rekord">
@@ -65,11 +70,11 @@
           <strong id="record-score">0</strong>
         </div>
       </section>
-      <section class="leaderboard-list-wrap">
+      <section id="leaderboard-list-wrap" class="leaderboard-list-wrap">
         <ol id="leaderboard-list" class="leaderboard-list" aria-live="polite"></ol>
         <div id="leaderboard-empty" class="leaderboard-empty" hidden>
-          <h3>Inga scores ännu</h3>
-          <p>Bli den första att sätta rekordet.</p>
+          <h3>Inga resultat ännu. Bli först.</h3>
+          <p>Spela en runda och sätt första platsen.</p>
         </div>
       </section>
       <section id="leaderboard-motivation" class="leaderboard-motivation" hidden>
@@ -78,9 +83,6 @@
       </section>
       <footer class="leaderboard-footer">
         <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
-        <p id="leaderboard-notice" class="leaderboard-notice" role="status" aria-live="polite"></p>
-        <p id="api-status" class="api-status" aria-live="polite">API: kontrollerar...</p>
-        <p id="api-status-detail" class="api-status-detail" aria-live="polite"></p>
       </footer>
     </aside>
   </main>
@@ -102,6 +104,7 @@
   </div>
 
   <canvas id="confetti" aria-hidden="true"></canvas>
+  <p id="ui-toast" class="ui-toast" role="status" aria-live="polite"></p>
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.js"></script>
   <script src="./config.js"></script>

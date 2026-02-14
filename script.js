@@ -56,14 +56,14 @@
   const effectsToggle = document.getElementById("effects-toggle");
 
   const leaderboardListEl = document.getElementById("leaderboard-list");
+  const leaderboardListWrapEl = document.getElementById("leaderboard-list-wrap");
   const leaderboardStateEl = document.getElementById("leaderboard-state");
-  const leaderboardNoticeEl = document.getElementById("leaderboard-notice");
-  const apiStatusEl = document.getElementById("api-status");
-  const apiStatusDetailEl = document.getElementById("api-status-detail");
+  const leaderboardToggleEl = document.getElementById("leaderboard-toggle");
   const recordScoreEl = document.getElementById("record-score");
   const motivationEl = document.getElementById("leaderboard-motivation");
   const motivationRecordEl = document.getElementById("motivation-record");
   const leaderboardEmptyEl = document.getElementById("leaderboard-empty");
+  const uiToastEl = document.getElementById("ui-toast");
 
   const modalEl = document.getElementById("name-modal");
   const modalInfoEl = document.getElementById("name-modal-info");
@@ -101,6 +101,8 @@
     audioUnlocked: false,
     touchStart: null,
     noticeTimer: 0,
+    leaderboardCollapsed: false,
+    leaderboardUserToggled: false,
     canUseGlobalLeaderboard: true,
     backendMode: "none",
     backendHint: "",
@@ -128,22 +130,27 @@
     updateHud();
     updateControlStates();
     updateModalAvailabilityMessage();
+    syncLeaderboardLayout();
     announce("Tryck Enter för att starta");
     fetchAndRenderLeaderboard();
-    checkApiStatus();
     requestAnimationFrame(loop);
     resizeConfettiCanvas();
+    updateLeaderboardScrollFade();
 
     if (typeof ResizeObserver === "function") {
       const ro = new ResizeObserver(() => {
         resizeCanvas();
         resizeConfettiCanvas();
+        syncLeaderboardLayout();
+        updateLeaderboardScrollFade();
       });
       ro.observe(canvas);
     } else {
       window.addEventListener("resize", () => {
         resizeCanvas();
         resizeConfettiCanvas();
+        syncLeaderboardLayout();
+        updateLeaderboardScrollFade();
       });
     }
 
@@ -223,6 +230,18 @@
     cancelNameBtnEl.addEventListener("click", () => {
       closeNameModal();
     });
+
+    if (leaderboardToggleEl) {
+      leaderboardToggleEl.addEventListener("click", () => {
+        state.leaderboardUserToggled = true;
+        state.leaderboardCollapsed = !state.leaderboardCollapsed;
+        syncLeaderboardLayout();
+      });
+    }
+
+    if (leaderboardListEl) {
+      leaderboardListEl.addEventListener("scroll", updateLeaderboardScrollFade, { passive: true });
+    }
   }
 
   // Huvudhantering för tangentbord. Prioriterar modal-logik före spelinput.
@@ -878,7 +897,7 @@
       state.lastSubmittedName = sanitizedName;
       state.lastSubmittedScore = state.score;
       localStorage.setItem("snake-last-player-name", sanitizedName);
-      showNotice("Poängen är sparad.");
+      showToast("Poäng sparad i topplistan");
       closeNameModal();
       await fetchAndRenderLeaderboard();
       if (window.__pendingBeatsRecord) {
@@ -886,12 +905,11 @@
       }
       window.__pendingBeatsRecord = false;
     } catch (error) {
-      showNotice("Kunde inte spara score just nu.");
-      const detail = error?.message ? ` Detalj: ${error.message}` : "";
-      nameErrorEl.textContent =
-        `Gick inte att spara. Kontrollera att API är live och att topplistan tillåter inskick (RLS).${detail}`;
+      showToast("Kunde inte spara poängen. Försök igen.");
+      nameErrorEl.textContent = "Gick inte att spara. Försök igen.";
       console.warn("[Snake] Score kunde inte sparas.", {
         backend: state.backendMode,
+        message: error?.message || "okänt fel",
       });
     } finally {
       saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
@@ -915,7 +933,12 @@
       });
     } catch (_error) {
       leaderboardListEl.innerHTML = "";
-      leaderboardStateEl.textContent = "Kunde inte hämta topplistan just nu.";
+      leaderboardEmptyEl.hidden = false;
+      motivationEl.hidden = false;
+      leaderboardStateEl.textContent = "Topplistan är tillfälligt otillgänglig.";
+      leaderboardEmptyEl.querySelector("h3").textContent = "Topplistan är tillfälligt otillgänglig.";
+      leaderboardEmptyEl.querySelector("p").textContent = "Spelet fungerar som vanligt. Försök igen snart.";
+      updateLeaderboardScrollFade();
       console.warn("[Snake] Kunde inte hämta topplistan.", {
         backend: state.backendMode,
       });
@@ -931,8 +954,11 @@
     if (top.length === 0) {
       leaderboardEmptyEl.hidden = false;
       motivationEl.hidden = false;
+      leaderboardEmptyEl.querySelector("h3").textContent = "Inga resultat ännu. Bli först.";
+      leaderboardEmptyEl.querySelector("p").textContent = "Spela en runda och sätt första platsen.";
       motivationEl.querySelector(".motivation-main").innerHTML =
         `Slå rekordet: <strong>${recordScore}</strong>`;
+      updateLeaderboardScrollFade();
       return;
     }
 
@@ -995,6 +1021,7 @@
       item.append(rank, name, score);
       leaderboardListEl.appendChild(item);
     }
+    updateLeaderboardScrollFade();
   }
 
   async function postScore(name, score) {
@@ -1094,12 +1121,63 @@
     return trimmed.slice(0, CONSTANTS.maxPlayerName);
   }
 
-  function showNotice(message) {
-    leaderboardNoticeEl.textContent = message;
+  function showToast(message) {
+    if (!uiToastEl) {
+      return;
+    }
+    uiToastEl.textContent = message;
+    uiToastEl.classList.add("is-visible");
     clearTimeout(state.noticeTimer);
     state.noticeTimer = setTimeout(() => {
-      leaderboardNoticeEl.textContent = "";
+      uiToastEl.classList.remove("is-visible");
     }, 3000);
+  }
+
+  function shouldUseCompactLeaderboard() {
+    const narrow = window.matchMedia("(max-width: 767px)").matches;
+    const lowLandscape = window.matchMedia("(max-height: 520px) and (orientation: landscape)").matches;
+    return narrow || lowLandscape;
+  }
+
+  function syncLeaderboardLayout() {
+    const card = document.querySelector(".leaderboard-card");
+    if (!card) {
+      return;
+    }
+
+    const compact = shouldUseCompactLeaderboard();
+    if (!compact) {
+      state.leaderboardCollapsed = false;
+      state.leaderboardUserToggled = false;
+      card.classList.remove("is-collapsed");
+      if (leaderboardToggleEl) {
+        leaderboardToggleEl.setAttribute("aria-expanded", "true");
+      }
+      return;
+    }
+
+    if (!state.leaderboardUserToggled) {
+      state.leaderboardCollapsed = true;
+    }
+
+    card.classList.toggle("is-collapsed", state.leaderboardCollapsed);
+    if (leaderboardToggleEl) {
+      leaderboardToggleEl.textContent = state.leaderboardCollapsed ? "Visa" : "Dölj";
+      leaderboardToggleEl.setAttribute("aria-expanded", String(!state.leaderboardCollapsed));
+    }
+  }
+
+  function updateLeaderboardScrollFade() {
+    if (!leaderboardListWrapEl || !leaderboardListEl) {
+      return;
+    }
+
+    const hasOverflow = leaderboardListEl.scrollHeight > leaderboardListEl.clientHeight + 2;
+    const atBottom =
+      leaderboardListEl.scrollTop + leaderboardListEl.clientHeight >= leaderboardListEl.scrollHeight - 2;
+
+    leaderboardListWrapEl.classList.toggle("has-overflow", hasOverflow);
+    leaderboardListWrapEl.classList.toggle("at-bottom", atBottom);
   }
 
   function triggerHaptic(durationMs) {
@@ -1142,124 +1220,6 @@
     }
 
     return "Servern kunde inte spara poängen.";
-  }
-
-  async function checkApiStatus() {
-    const setStatus = (primary, detail = "") => {
-      apiStatusEl.textContent = primary;
-      if (apiStatusDetailEl) {
-        apiStatusDetailEl.textContent = detail;
-      }
-    };
-
-    const shortReason = (error) => {
-      const raw = String(error?.message || error || "").replace(/\s+/g, " ").trim();
-      if (!raw) {
-        return "Okänt fel.";
-      }
-      return raw.slice(0, 120);
-    };
-
-    const timeoutFetch = async (url, options, timeoutMs = 5000) => {
-      const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        return await fetch(url, { ...options, signal: controller.signal });
-      } finally {
-        window.clearTimeout(timer);
-      }
-    };
-
-    const sanitizeStatusReason = (status, detail) => {
-      const compactDetail = String(detail || "").replace(/\s+/g, " ").trim().slice(0, 120);
-      if (status) {
-        return `Kunde inte nå Supabase (HTTP ${status}). Kontrollera RLS och API-nyckel.`;
-      }
-      if (compactDetail) {
-        return `Kunde inte nå Supabase. ${compactDetail}`;
-      }
-      return "Kunde inte nå Supabase. Kontrollera RLS och API-nyckel.";
-    };
-
-    if (state.backendMode === "local") {
-      setStatus("API: lokal", "Supabase är inte konfigurerat.");
-      return;
-    }
-
-    if (state.backendMode === "none") {
-      setStatus("API: lokal", "Supabase är inte konfigurerat.");
-      return;
-    }
-
-    if (state.backendMode === "supabase") {
-      try {
-        const config = getConfig();
-        if (!config) {
-          setStatus("API: lokal", "Supabase är inte konfigurerat.");
-          return;
-        }
-        const params = new URLSearchParams({
-          select: "id",
-          limit: "1",
-        });
-        const endpointPath = `/rest/v1/scores?${params.toString()}`;
-        const headers = buildSupabaseHeaders();
-        if (!headers) {
-          setStatus("API: lokal", "Supabase är inte konfigurerat.");
-          return;
-        }
-        const response = await timeoutFetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
-          method: "GET",
-          headers,
-        });
-        console.info("[Snake] API hälsokontroll.", {
-          mode: state.backendMode,
-          endpoint: endpointPath,
-          status: response.status,
-        });
-
-        if (!response.ok) {
-          const body = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
-          setStatus("API: fel", sanitizeStatusReason(response.status, body));
-          return;
-        }
-
-        setStatus("API: live", "Supabase svarar.");
-      } catch (error) {
-        const reason = error?.name === "AbortError" ? "Timeout efter 5 sekunder." : shortReason(error);
-        console.warn("[Snake] API hälsokontroll misslyckades.", {
-          mode: state.backendMode,
-          endpoint: "/rest/v1/scores",
-          message: reason,
-        });
-        setStatus("API: fel", sanitizeStatusReason(null, reason));
-      }
-      return;
-    }
-
-    try {
-      const response = await timeoutFetch(CONSTANTS.healthEndpoint, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        const body = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
-        const reason = body || `HTTP ${response.status}`;
-        setStatus("API: fel", `Hälsokontroll misslyckades: ${reason}`);
-        return;
-      }
-
-      const payload = await response.json();
-      if (payload?.ok) {
-        setStatus("API: live", "Backend svarar.");
-      } else {
-        setStatus("API: fel", "Backend svarar men rapporterar fel.");
-      }
-    } catch (error) {
-      const reason = error?.name === "AbortError" ? "Timeout efter 5 sekunder." : shortReason(error);
-      setStatus("API: fel", `Kunde inte nå backend: ${reason}`);
-    }
   }
 
   async function playRecordConfetti() {
@@ -1535,7 +1495,7 @@
     return { top: Array.isArray(rows) ? rows : [] };
   }
 
-  function fetchLeaderboardLocal(limit = 5) {
+  function fetchLeaderboardLocal(limit = CONSTANTS.leaderboardFetchLimit) {
     const rows = readLocalLeaderboardRows();
     const sorted = sortLeaderboardRows(rows).slice(0, limit);
     return { top: sorted };
@@ -1552,7 +1512,7 @@
     const sorted = sortLeaderboardRows(rows).slice(0, 100);
     writeLocalLeaderboardRows(sorted);
 
-    const top = sorted.slice(0, 5);
+    const top = sorted.slice(0, CONSTANTS.leaderboardFetchLimit);
     renderLeaderboard(top);
     leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
     return Promise.resolve();
