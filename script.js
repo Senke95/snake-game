@@ -58,6 +58,7 @@
   const leaderboardStateEl = document.getElementById("leaderboard-state");
   const leaderboardNoticeEl = document.getElementById("leaderboard-notice");
   const apiStatusEl = document.getElementById("api-status");
+  const apiStatusDetailEl = document.getElementById("api-status-detail");
   const recordScoreEl = document.getElementById("record-score");
   const motivationEl = document.getElementById("leaderboard-motivation");
   const motivationRecordEl = document.getElementById("motivation-record");
@@ -885,7 +886,12 @@
       window.__pendingBeatsRecord = false;
     } catch (error) {
       showNotice("Kunde inte spara score just nu.");
-      nameErrorEl.textContent = error?.message || "Det gick inte att spara. Försök igen.";
+      const detail = error?.message ? ` Detalj: ${error.message}` : "";
+      nameErrorEl.textContent =
+        `Gick inte att spara. Kontrollera att API är live och att topplistan tillåter inskick (RLS).${detail}`;
+      console.warn("[Snake] Score kunde inte sparas.", {
+        backend: state.backendMode,
+      });
     } finally {
       saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
       cancelNameBtnEl.disabled = false;
@@ -902,9 +908,16 @@
       renderLeaderboard(top);
       window.__top1Score = Number.isFinite(top[0]?.score) ? top[0].score : 0;
       leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+      console.info("[Snake] Topplista hämtad.", {
+        backend: state.backendMode,
+        rows: top.length,
+      });
     } catch (_error) {
       leaderboardListEl.innerHTML = "";
       leaderboardStateEl.textContent = "Kunde inte hämta topplistan just nu.";
+      console.warn("[Snake] Kunde inte hämta topplistan.", {
+        backend: state.backendMode,
+      });
     }
   }
 
@@ -1016,6 +1029,7 @@
       const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
       const reason = explainHttpFailure(response.status, responseBody);
       const details = responseBody ? ` Svar: ${responseBody}` : "";
+      console.warn("[Snake] API submit misslyckades.", { status: response.status });
       throw new Error(`Kunde inte spara (HTTP ${response.status}). ${reason}${details}`);
     }
 
@@ -1023,6 +1037,7 @@
     const top = Array.isArray(data.top) ? data.top : [];
     renderLeaderboard(top);
     leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+    console.info("[Snake] Score sparad via API.", { rows: top.length });
   }
 
   async function postScoreSupabase(name, score) {
@@ -1051,6 +1066,7 @@
     if (!response.ok) {
       const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
       const details = responseBody ? ` Svar: ${responseBody}` : "";
+      console.warn("[Snake] Supabase submit misslyckades.", { status: response.status });
       throw new Error(`Kunde inte spara (HTTP ${response.status}). Kontrollera Supabase-konfiguration.${details}`);
     }
 
@@ -1058,6 +1074,7 @@
     const top = Array.isArray(data.top) ? data.top : [];
     renderLeaderboard(top);
     leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+    console.info("[Snake] Score sparad via Supabase.", { rows: top.length });
   }
 
   function sanitizePlayerName(value) {
@@ -1120,42 +1137,94 @@
   }
 
   async function checkApiStatus() {
+    const setStatus = (primary, detail = "") => {
+      apiStatusEl.textContent = primary;
+      if (apiStatusDetailEl) {
+        apiStatusDetailEl.textContent = detail;
+      }
+    };
+
+    const shortReason = (error) => {
+      const raw = String(error?.message || error || "").replace(/\s+/g, " ").trim();
+      if (!raw) {
+        return "Okänt fel.";
+      }
+      return raw.slice(0, 120);
+    };
+
+    const timeoutFetch = async (url, options, timeoutMs = 5000) => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
     if (state.backendMode === "local") {
-      apiStatusEl.textContent = "API: lokal";
+      setStatus("API: fel", "Ingen global backend i denna miljö.");
       return;
     }
 
     if (state.backendMode === "none") {
-      apiStatusEl.textContent = "API: saknas";
+      setStatus("API: fel", "Ingen backend är konfigurerad.");
       return;
     }
 
     if (state.backendMode === "supabase") {
       try {
         const config = getSupabaseConfig();
-        const top = await fetchLeaderboardSupabase(config, 1);
-        apiStatusEl.textContent = Array.isArray(top.top) ? "API: OK" : "API: saknas";
-      } catch (_error) {
-        apiStatusEl.textContent = "API: saknas";
+        const params = new URLSearchParams({
+          select: "id",
+          limit: "1",
+        });
+        const response = await timeoutFetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
+          method: "GET",
+          headers: {
+            apikey: config.anonKey,
+            Authorization: `Bearer ${config.anonKey}`,
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const body = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
+          const reason = body || `HTTP ${response.status}`;
+          setStatus("API: fel", `Supabase svarade med fel: ${reason}`);
+          return;
+        }
+
+        setStatus("API: live", "Supabase svarar.");
+      } catch (error) {
+        const reason = error?.name === "AbortError" ? "Timeout efter 5 sekunder." : shortReason(error);
+        setStatus("API: fel", `Supabase kunde inte nås: ${reason}`);
       }
       return;
     }
 
     try {
-      const response = await fetch(CONSTANTS.healthEndpoint, {
+      const response = await timeoutFetch(CONSTANTS.healthEndpoint, {
         method: "GET",
         headers: { Accept: "application/json" },
       });
 
       if (!response.ok) {
-        apiStatusEl.textContent = "API: saknas";
+        const body = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
+        const reason = body || `HTTP ${response.status}`;
+        setStatus("API: fel", `Hälsokontroll misslyckades: ${reason}`);
         return;
       }
 
       const payload = await response.json();
-      apiStatusEl.textContent = payload?.ok ? "API: OK" : "API: saknas";
-    } catch (_error) {
-      apiStatusEl.textContent = "API: saknas";
+      if (payload?.ok) {
+        setStatus("API: live", "Backend svarar.");
+      } else {
+        setStatus("API: fel", "Backend svarar men rapporterar fel.");
+      }
+    } catch (error) {
+      const reason = error?.name === "AbortError" ? "Timeout efter 5 sekunder." : shortReason(error);
+      setStatus("API: fel", `Kunde inte nå backend: ${reason}`);
     }
   }
 
@@ -1357,6 +1426,7 @@
     });
 
     if (!response.ok) {
+      console.warn("[Snake] API topplista misslyckades.", { status: response.status });
       throw new Error("Kunde inte hämta topplistan");
     }
 
@@ -1380,6 +1450,7 @@
     });
 
     if (!response.ok) {
+      console.warn("[Snake] Supabase topplista misslyckades.", { status: response.status });
       throw new Error("Kunde inte läsa Supabase-topplistan");
     }
 
