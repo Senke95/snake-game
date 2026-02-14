@@ -60,13 +60,14 @@
       <ol id="leaderboard-list" class="leaderboard-list" aria-live="polite"></ol>
       <p id="leaderboard-state" class="leaderboard-state">Laddar topplista...</p>
       <p id="leaderboard-notice" class="leaderboard-notice" role="status" aria-live="polite"></p>
+      <p id="api-status" class="api-status" aria-live="polite">API: kontrollerar...</p>
     </aside>
   </main>
 
   <div id="name-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-modal-title" aria-hidden="true">
     <div class="modal-card">
       <h3 id="name-modal-title">Skriv ditt namn</h3>
-      <p>Din poäng kan sparas i topplistan.</p>
+      <p id="name-modal-info">Din poäng kan sparas i topplistan.</p>
       <form id="name-form" novalidate>
         <label for="player-name" class="sr-only">Ditt namn</label>
         <input id="player-name" name="playerName" type="text" maxlength="16" placeholder="Ditt namn" autocomplete="nickname" />

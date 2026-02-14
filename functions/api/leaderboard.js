@@ -1,5 +1,4 @@
-﻿// Standardheaders för JSON-svar och enkel CORS.
-function corsHeaders() {
+﻿function headers() {
   return {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
@@ -9,53 +8,52 @@ function corsHeaders() {
   };
 }
 
-// Hjälpfunktion för konsekventa JSON-responser.
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: corsHeaders(),
+    headers: headers(),
   });
 }
 
-// Sanerar och begränsar spelarnamn server-side.
 function sanitizeName(value) {
-  const withoutBreaks = String(value || "").replace(/[\r\n]+/g, " ");
-  const trimmed = withoutBreaks.trim();
-  if (!trimmed) {
+  const noBreaks = String(value || "").replace(/[\r\n]+/g, " ").trim();
+  if (!noBreaks) {
     return "";
   }
-  return trimmed.slice(0, 16);
+  return noBreaks.slice(0, 16);
 }
 
-// Läser topp 5 sorterat på score och tidpunkt.
-async function readTop(db) {
+async function top5(db) {
   const result = await db
-    .prepare(
-      "SELECT name, score, created_at FROM scores ORDER BY score DESC, created_at ASC LIMIT 5"
-    )
+    .prepare("SELECT name, score, created_at FROM scores ORDER BY score DESC, created_at ASC LIMIT 5")
     .all();
 
   return Array.isArray(result.results) ? result.results : [];
 }
 
-// HTTP-entrypoint för Cloudflare Pages Function.
+function dbMissingError() {
+  return json(
+    {
+      error: "D1 binding DB saknas",
+      hint: "Koppla DB i Cloudflare Pages Settings -> Bindings",
+    },
+    500
+  );
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
 
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders(),
-    });
+    return new Response(null, { status: 204, headers: headers() });
   }
 
-  const db = env.DB;
-  if (!db) {
-    return json({ error: "DB binding saknas" }, 500);
+  if (!env.DB) {
+    return dbMissingError();
   }
 
   if (request.method === "GET") {
-    const top = await readTop(db);
+    const top = await top5(env.DB);
     return json({ top });
   }
 
@@ -71,19 +69,16 @@ export async function onRequest(context) {
     const score = Number(payload?.score);
 
     if (!name) {
-      return json({ error: "Namn måste fyllas i" }, 400);
+      return json({ error: "Namn måste vara 1 till 16 tecken" }, 400);
     }
 
-    if (!Number.isInteger(score) || score < 0 || score > 1000000) {
+    if (!Number.isInteger(score) || score < 0 || score > 99999) {
       return json({ error: "Ogiltig poäng" }, 400);
     }
 
-    await db
-      .prepare("INSERT INTO scores (name, score) VALUES (?1, ?2)")
-      .bind(name, score)
-      .run();
+    await env.DB.prepare("INSERT INTO scores (name, score) VALUES (?1, ?2)").bind(name, score).run();
 
-    const top = await readTop(db);
+    const top = await top5(env.DB);
     return json({ top }, 201);
   }
 

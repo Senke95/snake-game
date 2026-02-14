@@ -12,6 +12,7 @@
     trailMax: 22,
     swipeThreshold: 26,
     leaderboardEndpoint: "/api/leaderboard",
+    healthEndpoint: "/api/health",
     maxPlayerName: 16,
   };
 
@@ -46,8 +47,10 @@
   const leaderboardListEl = document.getElementById("leaderboard-list");
   const leaderboardStateEl = document.getElementById("leaderboard-state");
   const leaderboardNoticeEl = document.getElementById("leaderboard-notice");
+  const apiStatusEl = document.getElementById("api-status");
 
   const modalEl = document.getElementById("name-modal");
+  const modalInfoEl = document.getElementById("name-modal-info");
   const nameFormEl = document.getElementById("name-form");
   const nameInputEl = document.getElementById("player-name");
   const nameErrorEl = document.getElementById("name-error");
@@ -81,6 +84,7 @@
     audioUnlocked: false,
     touchStart: null,
     noticeTimer: 0,
+    canUseGlobalLeaderboard: true,
   };
 
   const audio = createAudio();
@@ -90,13 +94,16 @@
 
   // Initierar appens startflöde och första render.
   function init() {
+    state.canUseGlobalLeaderboard = !isUnsupportedHosting();
     wireEvents();
     resetRound();
     resizeCanvas();
     updateHud();
     updateControlStates();
+    updateModalAvailabilityMessage();
     announce("Tryck Enter för att starta");
     fetchAndRenderLeaderboard();
+    checkApiStatus();
     requestAnimationFrame(loop);
 
     if (typeof ResizeObserver === "function") {
@@ -764,8 +771,9 @@
   // Öppnar modal för att kunna spara score till global topplista.
   function openNameModal() {
     nameErrorEl.textContent = "";
-    saveNameBtnEl.disabled = false;
+    saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
     cancelNameBtnEl.disabled = false;
+    updateModalAvailabilityMessage();
     modalEl.classList.add("is-open");
     modalEl.setAttribute("aria-hidden", "false");
     setTimeout(() => {
@@ -784,6 +792,12 @@
   async function submitScore(event) {
     event.preventDefault();
 
+    if (!state.canUseGlobalLeaderboard) {
+      nameErrorEl.textContent =
+        "Global topplista kräver backend. GitHub Pages kan inte spara topplistan. Publicera på Cloudflare Pages med Functions + D1 enligt README.";
+      return;
+    }
+
     const sanitizedName = sanitizePlayerName(nameInputEl.value);
     if (!sanitizedName) {
       nameErrorEl.textContent = "Skriv ett namn mellan 1 och 16 tecken.";
@@ -800,17 +814,23 @@
       showNotice("Poängen är sparad.");
       closeNameModal();
       await fetchAndRenderLeaderboard();
-    } catch (_error) {
+    } catch (error) {
       showNotice("Kunde inte spara score just nu.");
-      nameErrorEl.textContent = "Det gick inte att spara. Försök igen.";
+      nameErrorEl.textContent = error?.message || "Det gick inte att spara. Försök igen.";
     } finally {
-      saveNameBtnEl.disabled = false;
+      saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
       cancelNameBtnEl.disabled = false;
     }
   }
 
   // Hämtar topplistan från backend och uppdaterar UI.
   async function fetchAndRenderLeaderboard() {
+    if (!state.canUseGlobalLeaderboard) {
+      leaderboardListEl.innerHTML = "";
+      leaderboardStateEl.textContent = "Global topplista kräver Cloudflare Pages med Functions + D1.";
+      return;
+    }
+
     leaderboardStateEl.textContent = "Laddar topplista...";
 
     try {
@@ -859,17 +879,27 @@
   }
 
   async function postScore(name, score) {
-    const response = await fetch(CONSTANTS.leaderboardEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ name, score }),
-    });
+    let response;
+    try {
+      response = await fetch(CONSTANTS.leaderboardEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ name, score }),
+      });
+    } catch (_error) {
+      throw new Error(
+        "Kunde inte spara (nätverksfel). Kontrollera att du kör via http://localhost och inte en fil på disk."
+      );
+    }
 
     if (!response.ok) {
-      throw new Error("Kunde inte spara poängen");
+      const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
+      const reason = explainHttpFailure(response.status, responseBody);
+      const details = responseBody ? ` Svar: ${responseBody}` : "";
+      throw new Error(`Kunde inte spara (HTTP ${response.status}). ${reason}${details}`);
     }
 
     const data = await response.json();
@@ -893,6 +923,57 @@
     state.noticeTimer = setTimeout(() => {
       leaderboardNoticeEl.textContent = "";
     }, 3000);
+  }
+
+  function updateModalAvailabilityMessage() {
+    if (state.canUseGlobalLeaderboard) {
+      modalInfoEl.textContent = "Din poäng kan sparas i topplistan.";
+      return;
+    }
+
+    modalInfoEl.textContent =
+      "Global topplista kräver backend. GitHub Pages kan inte spara topplistan. Publicera på Cloudflare Pages med Functions + D1 enligt README.";
+  }
+
+  function isUnsupportedHosting() {
+    const host = window.location.hostname.toLowerCase();
+    return window.location.protocol === "file:" || host.endsWith("github.io");
+  }
+
+  function explainHttpFailure(status, body) {
+    if (status === 404) {
+      return "API saknas. Kör spelet på Cloudflare Pages för global topplista.";
+    }
+
+    if (status === 500 && body.includes("D1 binding DB saknas")) {
+      return "Backend finns men D1 binding saknas. Koppla DB i Cloudflare Pages Settings -> Bindings.";
+    }
+
+    return "Servern kunde inte spara poängen.";
+  }
+
+  async function checkApiStatus() {
+    if (isUnsupportedHosting()) {
+      apiStatusEl.textContent = "API: saknas";
+      return;
+    }
+
+    try {
+      const response = await fetch(CONSTANTS.healthEndpoint, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        apiStatusEl.textContent = "API: saknas";
+        return;
+      }
+
+      const payload = await response.json();
+      apiStatusEl.textContent = payload?.ok ? "API: OK" : "API: saknas";
+    } catch (_error) {
+      apiStatusEl.textContent = "API: saknas";
+    }
   }
 
   function roundRectFill(context, x, y, width, height, radius) {
@@ -1024,3 +1105,4 @@
     }
   }
 })();
+

@@ -2,7 +2,7 @@
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   score INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS scores_score_idx ON scores(score DESC);
+CREATE INDEX IF NOT EXISTS scores_score_idx ON scores(score);

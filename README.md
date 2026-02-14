@@ -35,40 +35,49 @@ Verifiera i browser:
 - `Space`: pausa eller fortsätt
 - `R`: starta om
 
-## Setup på Cloudflare Pages och D1
+## Global topplista (Cloudflare Pages + D1)
 
-1. Skapa Pages-projekt från GitHub
-- Öppna [Cloudflare Dashboard](https://dash.cloudflare.com/) -> `Workers & Pages` -> `Create application` -> `Pages` -> `Connect to Git`.
-- Välj ditt repo.
-- Build command: tomt.
+1. Skapa Cloudflare Pages-projekt från GitHub-repot
+- Gå till [Cloudflare Dashboard](https://dash.cloudflare.com/) -> `Workers & Pages` -> `Create application` -> `Pages` -> `Connect to Git`.
+- Välj detta GitHub-repo.
+- Build command: lämna tomt.
 - Build output directory: `/`.
 - Klicka `Save and Deploy`.
 
 2. Skapa D1-databas
 - Gå till `Workers & Pages` -> `D1` -> `Create database`.
-- Exempel på namn: `snake-leaderboard`.
+- Ge databasen ett namn, till exempel `snake-leaderboard`.
 
-3. Kör databasschema
+3. Kör schema i D1 Console
 - Öppna databasen -> `Console`.
-- Klistra in innehållet från `db/schema.sql`.
-- Kör SQL.
+- Kopiera innehållet från `db/schema.sql`.
+- Kör SQL i konsolen.
 
-4. Lägg till D1-binding i Pages-projektet
-- Gå till `Workers & Pages` -> projektet -> `Settings` -> `Functions` -> `D1 bindings`.
+4. Bind D1 till Pages-projektet
+- Gå till `Workers & Pages` -> ditt Pages-projekt -> `Settings` -> `Functions` -> `D1 bindings`.
 - Klicka `Add binding`.
-- Variable name: `DB`.
-- Välj databasen du skapade.
+- Binding name: `DB`.
+- Database: välj databasen du skapade.
 - Spara.
 
-5. Deploya om och hämta URL
-- Gå till `Workers & Pages` -> projektet -> `Deployments`.
-- Klicka `Retry deployment` eller pusha till `main`.
-- URL visas högst upp, till exempel `https://<projekt>.pages.dev`.
+5. Deploya och testa
+- Gå till `Workers & Pages` -> ditt projekt -> `Deployments`.
+- Klicka `Retry deployment` eller pusha en ny commit till `main`.
+- Öppna `https://<ditt-projekt>.pages.dev/api/health`.
+- Förväntat svar: JSON med `ok: true` och `db: \"ok\"`.
+- Öppna spelet och spara en score i namnmodalen.
 
 ## API
 
+- `GET /api/health`
 - `GET /api/leaderboard`
 - `POST /api/leaderboard`
+
+## GitHub Pages
+
+- Spelet fungerar på GitHub Pages.
+- Spara till global topplista är avstängt där eftersom `/api` saknas på statisk hosting.
+- För global topplista, använd Cloudflare Pages med Functions + D1 enligt stegen ovan.
 
 Exempel:
 
