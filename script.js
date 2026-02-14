@@ -133,6 +133,7 @@
     syncLeaderboardLayout();
     announce("Tryck Enter för att starta");
     fetchAndRenderLeaderboard();
+    checkApiStatus();
     requestAnimationFrame(loop);
     resizeConfettiCanvas();
     updateLeaderboardScrollFade();
@@ -1220,6 +1221,56 @@
     }
 
     return "Servern kunde inte spara poängen.";
+  }
+
+  async function checkApiStatus() {
+    if (state.backendMode === "local" || state.backendMode === "none") {
+      console.info("Backend: local fallback");
+      return;
+    }
+
+    if (state.backendMode === "supabase") {
+      const config = getConfig();
+      const headers = buildSupabaseHeaders();
+      if (!config || !headers) {
+        console.info("Backend: local fallback");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        select: "id",
+        limit: "1",
+      });
+
+      try {
+        const response = await fetch(`${config.url}/rest/v1/scores?${params.toString()}`, {
+          method: "GET",
+          headers,
+        });
+        if (response.ok) {
+          console.info("Backend: supabase (live)");
+        } else {
+          console.warn(`Backend: supabase (error ${response.status})`);
+        }
+      } catch (_error) {
+        console.warn("Backend: supabase (error network)");
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(CONSTANTS.healthEndpoint, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      if (response.ok) {
+        console.info("Backend: api (live)");
+      } else {
+        console.warn(`Backend: api (error ${response.status})`);
+      }
+    } catch (_error) {
+      console.warn("Backend: api (error network)");
+    }
   }
 
   async function playRecordConfetti() {
