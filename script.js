@@ -19,6 +19,7 @@
     healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
     maxPlayerName: 16,
+    localLeaderboardKey: "snake-local-leaderboard",
   };
 
   const GAME_MODE = {
@@ -865,12 +866,6 @@
 
   // Hämtar topplistan från backend och uppdaterar UI.
   async function fetchAndRenderLeaderboard() {
-    if (!state.canUseGlobalLeaderboard) {
-      leaderboardListEl.innerHTML = "";
-      leaderboardStateEl.textContent = state.backendHint;
-      return;
-    }
-
     leaderboardStateEl.textContent = "Laddar topplista...";
 
     try {
@@ -910,6 +905,10 @@
   }
 
   async function postScore(name, score) {
+    if (state.backendMode === "local") {
+      return postScoreLocal(name, score);
+    }
+
     if (state.backendMode === "supabase") {
       return postScoreSupabase(name, score);
     }
@@ -1010,6 +1009,12 @@
   }
 
   function updateModalAvailabilityMessage() {
+    if (state.backendMode === "local") {
+      modalInfoEl.textContent =
+        "Global topplista kräver backend. Just nu sparas poängen lokalt på denna enhet.";
+      return;
+    }
+
     if (state.canUseGlobalLeaderboard) {
       modalInfoEl.textContent = "Din poäng kan sparas i topplistan.";
       return;
@@ -1036,6 +1041,11 @@
   }
 
   async function checkApiStatus() {
+    if (state.backendMode === "local") {
+      apiStatusEl.textContent = "API: lokal";
+      return;
+    }
+
     if (state.backendMode === "none") {
       apiStatusEl.textContent = "API: saknas";
       return;
@@ -1087,10 +1097,9 @@
       return;
     }
 
-    state.backendMode = "none";
-    state.canUseGlobalLeaderboard = false;
-    state.backendHint =
-      "Global topplista kräver backend. På GitHub Pages behöver du konfigurera Supabase i config.js eller använda Cloudflare Pages med Functions + D1 enligt README.";
+    state.backendMode = "local";
+    state.canUseGlobalLeaderboard = true;
+    state.backendHint = "";
   }
 
   function getSupabaseConfig() {
@@ -1106,6 +1115,10 @@
   }
 
   async function fetchLeaderboardData() {
+    if (state.backendMode === "local") {
+      return fetchLeaderboardLocal();
+    }
+
     if (state.backendMode === "supabase") {
       const config = getSupabaseConfig();
       return fetchLeaderboardSupabase(config);
@@ -1145,6 +1158,70 @@
 
     const rows = await response.json();
     return { top: Array.isArray(rows) ? rows : [] };
+  }
+
+  function fetchLeaderboardLocal(limit = 5) {
+    const rows = readLocalLeaderboardRows();
+    const sorted = sortLeaderboardRows(rows).slice(0, limit);
+    return { top: sorted };
+  }
+
+  function postScoreLocal(name, score) {
+    const rows = readLocalLeaderboardRows();
+    rows.push({
+      name,
+      score,
+      created_at: new Date().toISOString(),
+    });
+
+    const sorted = sortLeaderboardRows(rows).slice(0, 100);
+    writeLocalLeaderboardRows(sorted);
+
+    const top = sorted.slice(0, 5);
+    renderLeaderboard(top);
+    leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
+    return Promise.resolve();
+  }
+
+  function readLocalLeaderboardRows() {
+    try {
+      const raw = localStorage.getItem(CONSTANTS.localLeaderboardKey);
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return parsed
+        .filter((row) => typeof row?.name === "string" && Number.isInteger(row?.score))
+        .map((row) => ({
+          name: sanitizePlayerName(row.name) || "Spelare",
+          score: Math.max(0, Math.min(99999, row.score)),
+          created_at: typeof row.created_at === "string" ? row.created_at : new Date(0).toISOString(),
+        }));
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function writeLocalLeaderboardRows(rows) {
+    try {
+      localStorage.setItem(CONSTANTS.localLeaderboardKey, JSON.stringify(rows));
+    } catch (_error) {
+      // Ignore storage failures.
+    }
+  }
+
+  function sortLeaderboardRows(rows) {
+    return [...rows].sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return String(a.created_at).localeCompare(String(b.created_at));
+    });
   }
 
   function roundRectFill(context, x, y, width, height, radius) {

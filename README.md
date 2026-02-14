@@ -69,3 +69,4 @@ Supabase-läget använder direktanrop mot `https://<project-ref>.supabase.co/res
 - `API: saknas` på GitHub Pages: kontrollera `config.js` och att `SUPABASE_ANON_KEY` är satt.
 - `HTTP 401/403` vid spara: kontrollera `anon` key och att policies i `supabase/schema.sql` är körda.
 - `HTTP 404` i Cloudflare-läge: kontrollera att Functions är deployade.
+- `API: lokal`: backend saknas, topplistan sparas lokalt i webbläsaren på denna enhet.
