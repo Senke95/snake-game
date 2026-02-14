@@ -20,6 +20,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -33,7 +34,11 @@ body {
   min-height: 100svh;
   display: grid;
   place-items: center;
-  padding: clamp(0.45rem, 1.5vh, 0.75rem);
+  padding:
+    max(env(safe-area-inset-top), clamp(0.45rem, 1.5vh, 0.75rem))
+    max(env(safe-area-inset-right), clamp(0.45rem, 1.5vh, 0.75rem))
+    max(env(safe-area-inset-bottom), clamp(0.45rem, 1.5vh, 0.75rem))
+    max(env(safe-area-inset-left), clamp(0.45rem, 1.5vh, 0.75rem));
   overflow: hidden;
   font-family: "Segoe UI", "Noto Sans", sans-serif;
   color: var(--text);
@@ -121,6 +126,10 @@ body.is-playing {
   color: var(--text-soft);
   font-size: clamp(0.8rem, 0.75rem + 0.2vw, 0.92rem);
   line-height: 1.35;
+}
+
+.mobile-tip {
+  display: none;
 }
 
 .hud-row {
@@ -306,6 +315,12 @@ body.is-playing {
   color: var(--text);
   font-size: 1.15rem;
   touch-action: manipulation;
+  user-select: none;
+}
+
+.dpad-btn.is-pressed {
+  transform: scale(0.96);
+  background: rgba(52, 79, 130, 0.9);
 }
 
 .dpad-btn.up {
@@ -434,6 +449,7 @@ body.is-playing {
     height: auto;
     max-height: none;
     min-height: calc(100svh - 12px);
+    padding-bottom: max(env(safe-area-inset-bottom), 0.45rem);
   }
 
   .control-row {
@@ -450,6 +466,45 @@ body.is-playing {
 
   .dpad {
     display: block;
+    width: 212px;
+    height: 212px;
+  }
+
+  .dpad-btn {
+    width: 64px;
+    height: 64px;
+    font-size: 1.25rem;
+  }
+
+  .dpad-btn.up {
+    left: 74px;
+    top: 0;
+  }
+
+  .dpad-btn.down {
+    left: 74px;
+    bottom: 0;
+  }
+
+  .dpad-btn.left {
+    left: 0;
+    top: 74px;
+  }
+
+  .dpad-btn.right {
+    right: 0;
+    top: 74px;
+  }
+
+  .mobile-tip {
+    display: block;
+  }
+}
+
+@media (pointer: coarse) {
+  .btn:hover {
+    border-color: var(--btn-border);
+    background: var(--btn-bg);
   }
 }
 
@@ -481,5 +536,20 @@ body.is-playing {
   .btn,
   .toggle {
     font-size: 0.84rem;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  :root {
+    --canvas-size: min(58svh, 420px);
+  }
+
+  .panel-header p {
+    font-size: 0.78rem;
+  }
+
+  .mobile-tip {
+    display: block;
+    font-size: 0.74rem;
   }
 }

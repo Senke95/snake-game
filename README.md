@@ -28,6 +28,14 @@ Verifiera i browser:
 - Zoom: `100%`
 - Förväntat: spelpanel och topplista syns utan att användaren måste zooma ut.
 
+## Mobil testmatris
+
+Verifiera på både Android och iOS:
+- Stående läge: svepstyrning fungerar utan scroll-ryck.
+- Liggande läge: canvas och kontroller får plats med safe areas.
+- App i bakgrunden och tillbaka: spelet går till paus.
+- D-pad respons: knapptryck känns direkt och ger taktil feedback där enheten stödjer vibration.
+
 ## Kontroller
 
 - Pilar eller `WASD`: styr ormen

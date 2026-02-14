@@ -11,6 +11,10 @@
     particleBurstCount: 14,
     trailMax: 22,
     swipeThreshold: 26,
+    swipeMaxDurationMs: 460,
+    hapticTurnMs: 6,
+    hapticEatMs: 12,
+    hapticGameOverMs: 26,
     leaderboardEndpoint: "/api/leaderboard",
     healthEndpoint: "/api/health",
     maxPlayerName: 16,
@@ -85,6 +89,8 @@
     touchStart: null,
     noticeTimer: 0,
     canUseGlobalLeaderboard: true,
+    isCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
+    wasRunningBeforeHidden: false,
   };
 
   const audio = createAudio();
@@ -95,6 +101,7 @@
   // Initierar appens startflöde och första render.
   function init() {
     state.canUseGlobalLeaderboard = !isUnsupportedHosting();
+    document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
     resetRound();
     resizeCanvas();
@@ -114,6 +121,8 @@
     } else {
       window.addEventListener("resize", resizeCanvas);
     }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
   }
 
   // Kopplar alla användarinteraktioner: tangentbord, touch, knappar och modal.
@@ -155,56 +164,28 @@
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         unlockAudioFromGesture();
+        button.classList.add("is-pressed");
+        triggerHaptic(CONSTANTS.hapticTurnMs);
         queueDirection(fromDirName(button.dataset.dir));
+      });
+
+      button.addEventListener("pointerup", () => {
+        button.classList.remove("is-pressed");
+      });
+
+      button.addEventListener("pointercancel", () => {
+        button.classList.remove("is-pressed");
       });
     });
 
-    canvas.addEventListener(
-      "touchstart",
-      (event) => {
-        unlockAudioFromGesture();
-        if (event.touches.length !== 1) {
-          return;
-        }
-        const touch = event.touches[0];
-        state.touchStart = {
-          x: touch.clientX,
-          y: touch.clientY,
-          time: performance.now(),
-        };
-      },
-      { passive: true }
-    );
-
-    canvas.addEventListener(
-      "touchend",
-      (event) => {
-        if (!state.touchStart || event.changedTouches.length !== 1) {
-          state.touchStart = null;
-          return;
-        }
-        const touch = event.changedTouches[0];
-        const dx = touch.clientX - state.touchStart.x;
-        const dy = touch.clientY - state.touchStart.y;
-        const elapsed = performance.now() - state.touchStart.time;
-        state.touchStart = null;
-
-        if (elapsed > 460) {
-          return;
-        }
-
-        if (Math.abs(dx) < CONSTANTS.swipeThreshold && Math.abs(dy) < CONSTANTS.swipeThreshold) {
-          return;
-        }
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-          queueDirection(dx > 0 ? DIRECTIONS.right : DIRECTIONS.left);
-        } else {
-          queueDirection(dy > 0 ? DIRECTIONS.down : DIRECTIONS.up);
-        }
-      },
-      { passive: true }
-    );
+    canvas.addEventListener("pointerdown", onCanvasPointerDown, { passive: true });
+    canvas.addEventListener("pointerup", onCanvasPointerUp, { passive: true });
+    canvas.addEventListener("pointercancel", () => {
+      state.touchStart = null;
+    });
+    canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
 
     modalEl.addEventListener("click", (event) => {
       if (event.target === modalEl) {
@@ -290,6 +271,60 @@
       default:
         break;
     }
+  }
+
+  function onCanvasPointerDown(event) {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    unlockAudioFromGesture();
+    state.touchStart = {
+      x: event.clientX,
+      y: event.clientY,
+      time: performance.now(),
+    };
+  }
+
+  function onCanvasPointerUp(event) {
+    if (event.pointerType !== "touch" || !state.touchStart) {
+      return;
+    }
+
+    const dx = event.clientX - state.touchStart.x;
+    const dy = event.clientY - state.touchStart.y;
+    const elapsed = performance.now() - state.touchStart.time;
+    state.touchStart = null;
+
+    if (elapsed > CONSTANTS.swipeMaxDurationMs) {
+      return;
+    }
+
+    if (Math.abs(dx) < CONSTANTS.swipeThreshold && Math.abs(dy) < CONSTANTS.swipeThreshold) {
+      return;
+    }
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      queueDirection(dx > 0 ? DIRECTIONS.right : DIRECTIONS.left);
+    } else {
+      queueDirection(dy > 0 ? DIRECTIONS.down : DIRECTIONS.up);
+    }
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === "hidden") {
+      state.wasRunningBeforeHidden = state.mode === GAME_MODE.running;
+      if (state.mode === GAME_MODE.running) {
+        setMode(GAME_MODE.paused);
+        announce("Pausad");
+      }
+      return;
+    }
+
+    if (state.wasRunningBeforeHidden && state.mode === GAME_MODE.paused) {
+      announce("Pausad");
+    }
+    state.wasRunningBeforeHidden = false;
   }
 
   function startGame() {
@@ -431,6 +466,7 @@
     if (hitsWall || hitsBody) {
       setMode(GAME_MODE.gameover);
       addShake(10);
+      triggerHaptic(CONSTANTS.hapticGameOverMs);
       audio.gameOver();
       announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter för att spela igen`);
       openNameModal();
@@ -454,6 +490,7 @@
       spawnFood();
       spawnParticles(head.x, head.y, CONSTANTS.particleBurstCount);
       addShake(4);
+      triggerHaptic(CONSTANTS.hapticEatMs);
       audio.eat();
       updateHud();
     } else {
@@ -469,6 +506,7 @@
     const nextDirection = state.inputBuffer.shift();
     if (!isOppositeDirection(nextDirection, state.direction)) {
       state.direction = nextDirection;
+      triggerHaptic(CONSTANTS.hapticTurnMs);
       audio.turn();
     }
   }
@@ -923,6 +961,16 @@
     state.noticeTimer = setTimeout(() => {
       leaderboardNoticeEl.textContent = "";
     }, 3000);
+  }
+
+  function triggerHaptic(durationMs) {
+    if (!state.effectsEnabled || !state.isCoarsePointer) {
+      return;
+    }
+
+    if (typeof navigator.vibrate === "function") {
+      navigator.vibrate(durationMs);
+    }
   }
 
   function updateModalAvailabilityMessage() {
