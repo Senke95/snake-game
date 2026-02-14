@@ -358,6 +358,16 @@ body.is-playing {
   display: flex;
 }
 
+#confetti {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 1;
+}
+
 .modal-card {
   width: min(92vw, 380px);
   border-radius: 14px;
@@ -413,6 +423,29 @@ body.is-playing {
 
 .modal-actions .btn {
   flex: 1;
+}
+
+.record-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(env(safe-area-inset-bottom), 1.4rem);
+  transform: translateX(-50%) translateY(8px);
+  padding: 0.62rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(174, 206, 255, 0.45);
+  background: rgba(9, 16, 34, 0.92);
+  color: #eef5ff;
+  font-size: 0.88rem;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+  z-index: 10000;
+}
+
+.record-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .sr-only {

@@ -38,6 +38,10 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
+  const confettiCanvas = document.getElementById("confetti");
+  const reducedMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const scoreEl = document.getElementById("score");
   const highScoreEl = document.getElementById("high-score");
@@ -67,6 +71,7 @@
 
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d", { alpha: false });
+  const recordToastEl = createRecordToast();
 
   // Runtime-state för hela appen. Hålls i minnet och återställs per omgång.
   const state = {
@@ -98,12 +103,15 @@
   };
 
   const audio = createAudio();
+  const confettiController = createConfettiController();
   highScoreEl.textContent = String(state.highScore);
 
   init();
 
   // Initierar appens startflöde och första render.
   function init() {
+    window.__top1Score = Number.isFinite(window.__top1Score) ? window.__top1Score : 0;
+    window.__pendingBeatsRecord = false;
     resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
     wireEvents();
@@ -116,14 +124,19 @@
     fetchAndRenderLeaderboard();
     checkApiStatus();
     requestAnimationFrame(loop);
+    resizeConfettiCanvas();
 
     if (typeof ResizeObserver === "function") {
       const ro = new ResizeObserver(() => {
         resizeCanvas();
+        resizeConfettiCanvas();
       });
       ro.observe(canvas);
     } else {
-      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("resize", () => {
+        resizeCanvas();
+        resizeConfettiCanvas();
+      });
     }
 
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -341,6 +354,7 @@
     }
 
     closeNameModal();
+    window.__pendingBeatsRecord = false;
     setMode(GAME_MODE.running);
     announce("Spelet startat");
   }
@@ -360,6 +374,7 @@
 
   function restartGame() {
     closeNameModal();
+    window.__pendingBeatsRecord = false;
     resetRound();
     setMode(GAME_MODE.running);
     announce("Spelet startat om");
@@ -472,6 +487,7 @@
       addShake(10);
       triggerHaptic(CONSTANTS.hapticGameOverMs);
       audio.gameOver();
+      window.__pendingBeatsRecord = state.score > (window.__top1Score ?? 0);
       announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter för att spela igen`);
       openNameModal();
       return;
@@ -855,6 +871,10 @@
       showNotice("Poängen är sparad.");
       closeNameModal();
       await fetchAndRenderLeaderboard();
+      if (window.__pendingBeatsRecord) {
+        await playRecordConfetti();
+      }
+      window.__pendingBeatsRecord = false;
     } catch (error) {
       showNotice("Kunde inte spara score just nu.");
       nameErrorEl.textContent = error?.message || "Det gick inte att spara. Försök igen.";
@@ -872,6 +892,7 @@
       const data = await fetchLeaderboardData();
       const top = Array.isArray(data.top) ? data.top : [];
       renderLeaderboard(top);
+      window.__top1Score = Number.isFinite(top[0]?.score) ? top[0].score : 0;
       leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
     } catch (_error) {
       leaderboardListEl.innerHTML = "";
@@ -1078,6 +1099,154 @@
     } catch (_error) {
       apiStatusEl.textContent = "API: saknas";
     }
+  }
+
+  async function playRecordConfetti() {
+    if (reducedMotion) {
+      showReducedMotionCelebration();
+      return;
+    }
+
+    await confettiController.play();
+  }
+
+  function resizeConfettiCanvas() {
+    if (!confettiCanvas) {
+      return;
+    }
+
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const width = Math.max(1, Math.round(window.innerWidth * dpr));
+    const height = Math.max(1, Math.round(window.innerHeight * dpr));
+
+    if (confettiCanvas.width === width && confettiCanvas.height === height) {
+      return;
+    }
+
+    confettiCanvas.width = width;
+    confettiCanvas.height = height;
+    confettiCanvas.style.width = "100vw";
+    confettiCanvas.style.height = "100vh";
+  }
+
+  function createRecordToast() {
+    const el = document.createElement("p");
+    el.className = "record-toast";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function showReducedMotionCelebration() {
+    recordToastEl.textContent = "Nytt rekord. Snyggt jobbat!";
+    recordToastEl.classList.add("is-visible");
+    window.setTimeout(() => {
+      recordToastEl.classList.remove("is-visible");
+    }, 2000);
+  }
+
+  function createConfettiController() {
+    let fire = null;
+    let starShape = null;
+
+    function ensure() {
+      if (fire || !confettiCanvas || typeof window.confetti !== "function") {
+        return;
+      }
+
+      resizeConfettiCanvas();
+      fire = window.confetti.create(confettiCanvas, { resize: true, useWorker: true });
+
+      if (typeof window.confetti.shapeFromPath === "function") {
+        try {
+          starShape = window.confetti.shapeFromPath({
+            path: "M12 0L15.7 7.6L24 8.7L18 14.4L19.4 22.6L12 18.7L4.6 22.6L6 14.4L0 8.7L8.3 7.6Z",
+          });
+        } catch (_error) {
+          starShape = null;
+        }
+      }
+    }
+
+    function shapes() {
+      if (!starShape) {
+        return undefined;
+      }
+      return ["square", "circle", "square", "circle", "square", "circle", "square", starShape, starShape, starShape];
+    }
+
+    async function play() {
+      try {
+        ensure();
+        if (!fire) {
+          return;
+        }
+
+        const common = {
+          colors: ["#ffffff", "#ffd66b", "#8cf7ff", "#7c6cff", "#ff77d9"],
+          shapes: shapes(),
+        };
+
+        fire({
+          ...common,
+          particleCount: 140,
+          spread: 80,
+          startVelocity: 55,
+          gravity: 1.0,
+          scalar: 1.0,
+          origin: { x: 0.5, y: 0.05 },
+        });
+
+        await sleep(150);
+        for (let i = 0; i < 10; i += 1) {
+          fire({
+            ...common,
+            particleCount: 24,
+            spread: 55,
+            startVelocity: 38,
+            gravity: 1.15,
+            ticks: 180,
+            angle: 60,
+            origin: { x: 0.05, y: 0.22 },
+          });
+          fire({
+            ...common,
+            particleCount: 24,
+            spread: 55,
+            startVelocity: 38,
+            gravity: 1.15,
+            ticks: 180,
+            angle: 120,
+            origin: { x: 0.95, y: 0.22 },
+          });
+          await sleep(100);
+        }
+
+        await sleep(50);
+        for (let i = 0; i < 6; i += 1) {
+          fire({
+            ...common,
+            particleCount: 18,
+            spread: 45,
+            startVelocity: 18,
+            gravity: 0.6,
+            ticks: 220,
+            scalar: 0.85,
+            origin: { x: 0.14 + Math.random() * 0.72, y: 0 },
+          });
+          await sleep(250);
+        }
+      } catch (_error) {
+        // Confetti is optional. Ignore runtime failures.
+      }
+    }
+
+    return { play };
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   function resolveBackendMode() {
