@@ -58,7 +58,6 @@
   const leaderboardListEl = document.getElementById("leaderboard-list");
   const leaderboardListWrapEl = document.getElementById("leaderboard-list-wrap");
   const leaderboardStateEl = document.getElementById("leaderboard-state");
-  const debugStatusEl = document.getElementById("debug-status");
   const leaderboardToggleEl = document.getElementById("leaderboard-toggle");
   const recordScoreEl = document.getElementById("record-score");
   const motivationEl = document.getElementById("leaderboard-motivation");
@@ -118,7 +117,6 @@
 
   const audio = createAudio();
   const confettiController = createConfettiController();
-  const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
   highScoreEl.textContent = String(state.highScore);
 
   init();
@@ -129,7 +127,6 @@
     window.__pendingBeatsRecord = false;
     await resolveBackendMode();
     document.body.classList.toggle("is-touch", state.isCoarsePointer);
-    document.body.classList.toggle("debug-mode", debugMode);
     wireEvents();
     resetRound();
     resizeCanvas();
@@ -1017,7 +1014,7 @@
     for (let i = 0; i < top.length; i += 1) {
       const row = top[i];
       const item = document.createElement("li");
-      item.className = "leaderboard-item";
+      item.className = "leaderboard-row";
       if (i === 0) {
         item.classList.add("is-top");
       }
@@ -1261,33 +1258,9 @@
   }
 
   async function checkApiStatus() {
-    if (!debugMode) {
-      if (debugStatusEl) {
-        debugStatusEl.hidden = true;
-      }
-      if (state.backendMode === "supabase") {
-        console.info("Backend: supabase (live)");
-      } else {
-        console.info("Backend: local fallback");
-      }
-      return;
-    }
-
-    if (debugStatusEl) {
-      debugStatusEl.hidden = false;
-    }
-
     if (state.backendMode === "supabase") {
-      const reason = state.backendReason === "probe_ok" ? "Supabase aktiv." : `Supabase med varning (${state.backendReason}).`;
-      if (debugStatusEl) {
-        debugStatusEl.textContent = `Backendstatus: ${reason}`;
-      }
       console.info("Backend: supabase (live)");
       return;
-    }
-
-    if (debugStatusEl) {
-      debugStatusEl.textContent = "Backendstatus: Lokal reserv aktiv.";
     }
     console.info("Backend: local fallback");
   }
