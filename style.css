@@ -278,6 +278,7 @@ body.is-playing {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 0.36rem;
 }
 
@@ -307,6 +308,7 @@ body.is-playing {
 
 .leaderboard-row {
   display: flex;
+  flex: 0 0 auto;
   gap: 0.58rem;
   align-items: center;
   min-height: 46px;
