@@ -4,7 +4,7 @@ Supabase används från frontend via REST.
 
 ## Läs topplista
 
-`GET /rest/v1/scores?select=name,score,created_at&order=score.desc,created_at.asc&limit=5`
+`GET /rest/v1/scores?select=name,score,created_at&order=score.desc,created_at.asc&limit=50`
 
 ## Spara score
 

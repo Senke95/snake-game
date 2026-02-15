@@ -22,18 +22,15 @@ python -m http.server 8000
 1. Kör SQL i `supabase/schema.sql` via Supabase `SQL Editor`.
 2. Sätt `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `config.js`.
 3. Deploya till GitHub Pages.
-4. Verifiera status i UI.
-
-Status i UI:
-- `API: live`: topplistan är ansluten.
-- `API: fel`: anslutning finns men något blockerar.
-- `API: lokal`: Supabase är inte konfigurerat.
+4. Spela en runda och verifiera att topplistan uppdateras.
 
 ## Nätverksanrop
 
 - `GET /rest/v1/scores?select=id&limit=1` för health check.
-- `GET /rest/v1/scores?...limit=5` för topplista.
+- `GET /rest/v1/scores?...limit=50` för topplista.
 - `POST /rest/v1/scores` för att spara score.
+
+Om Supabase är nere använder spelet lokal topplista tills anslutningen fungerar igen.
 
 ## Projektfiler
 

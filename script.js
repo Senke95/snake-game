@@ -8,6 +8,7 @@
     minStepMs: 78,
     speedRampPerPoint: 2.6,
     maxAccumulatorMs: 240,
+    probeTimeoutMs: 5000,
     particleBurstCount: 14,
     trailMax: 22,
     swipeThreshold: 26,
@@ -15,8 +16,6 @@
     hapticTurnMs: 6,
     hapticEatMs: 12,
     hapticGameOverMs: 26,
-    leaderboardEndpoint: "/api/leaderboard",
-    healthEndpoint: "/api/health",
     supabaseDefaultUrl: "https://qnzmvikkfytxpdgbuxyy.supabase.co",
     leaderboardFetchLimit: 50,
     maxPlayerName: 16,
@@ -107,6 +106,7 @@
     backendMode: "none",
     backendHint: "",
     backendReason: "",
+    lastFocusBeforeModal: null,
     isCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
     wasRunningBeforeHidden: false,
     lastSubmittedName: "",
@@ -197,20 +197,29 @@
     });
 
     dpadButtons.forEach((button) => {
+      button.setAttribute("aria-pressed", "false");
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         unlockAudioFromGesture();
         button.classList.add("is-pressed");
+        button.setAttribute("aria-pressed", "true");
         triggerHaptic(CONSTANTS.hapticTurnMs);
         queueDirection(fromDirName(button.dataset.dir));
       });
 
       button.addEventListener("pointerup", () => {
         button.classList.remove("is-pressed");
+        button.setAttribute("aria-pressed", "false");
       });
 
       button.addEventListener("pointercancel", () => {
         button.classList.remove("is-pressed");
+        button.setAttribute("aria-pressed", "false");
+      });
+
+      button.addEventListener("pointerleave", () => {
+        button.classList.remove("is-pressed");
+        button.setAttribute("aria-pressed", "false");
       });
     });
 
@@ -251,6 +260,11 @@
   // Huvudhantering för tangentbord. Prioriterar modal-logik före spelinput.
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
+
+    if (modalEl.classList.contains("is-open") && key === "tab") {
+      trapModalFocus(event);
+      return;
+    }
 
     if (key === "escape" && modalEl.classList.contains("is-open")) {
       closeNameModal();
@@ -869,6 +883,8 @@
     saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
     cancelNameBtnEl.disabled = false;
     updateModalAvailabilityMessage();
+    state.lastFocusBeforeModal =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modalEl.classList.add("is-open");
     modalEl.setAttribute("aria-hidden", "false");
     setTimeout(() => {
@@ -881,6 +897,38 @@
     modalEl.classList.remove("is-open");
     modalEl.setAttribute("aria-hidden", "true");
     nameErrorEl.textContent = "";
+    if (state.lastFocusBeforeModal && typeof state.lastFocusBeforeModal.focus === "function") {
+      state.lastFocusBeforeModal.focus();
+    }
+    state.lastFocusBeforeModal = null;
+  }
+
+  function trapModalFocus(event) {
+    const focusable = Array.from(
+      modalEl.querySelectorAll(
+        "button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex='-1'])"
+      )
+    ).filter((el) => el instanceof HTMLElement);
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   // Skickar score till backend efter validering.
@@ -1064,43 +1112,7 @@
       return postScoreLocal(name, score);
     }
 
-    if (state.backendMode === "supabase") {
-      return postScoreSupabase(name, score);
-    }
-
-    return postScoreApi(name, score);
-  }
-
-  async function postScoreApi(name, score) {
-    let response;
-    try {
-      response = await fetch(CONSTANTS.leaderboardEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ name, score }),
-      });
-    } catch (_error) {
-      throw new Error(
-        "Kunde inte spara (nätverksfel). Kontrollera att du kör via http://localhost och inte en fil på disk."
-      );
-    }
-
-    if (!response.ok) {
-      const responseBody = (await response.text()).slice(0, 200).replace(/\s+/g, " ").trim();
-      const reason = explainHttpFailure(response.status, responseBody);
-      const details = responseBody ? ` Svar: ${responseBody}` : "";
-      console.warn("[Snake] API submit misslyckades.", { status: response.status });
-      throw new Error(`Kunde inte spara (HTTP ${response.status}). ${reason}${details}`);
-    }
-
-    const data = await response.json();
-    const top = Array.isArray(data.top) ? data.top : [];
-    renderLeaderboard(top);
-    leaderboardStateEl.textContent = top.length > 0 ? "" : "Topplistan är tom ännu.";
-    console.info("[Snake] Score sparad via API.", { rows: top.length });
+    return postScoreSupabase(name, score);
   }
 
   async function postScoreSupabase(name, score) {
@@ -1227,8 +1239,14 @@
 
   function updateModalAvailabilityMessage() {
     if (state.backendMode === "local") {
+      if (state.backendReason === "missing_config") {
+        modalInfoEl.textContent =
+          "Global topplista är inte konfigurerad. Poängen sparas lokalt på denna enhet.";
+        return;
+      }
+
       modalInfoEl.textContent =
-        "Global topplista kräver backend. Just nu sparas poängen lokalt på denna enhet.";
+        "Global topplista är tillfälligt otillgänglig. Poängen sparas lokalt på denna enhet.";
       return;
     }
 
@@ -1240,26 +1258,13 @@
     modalInfoEl.textContent = state.backendHint;
   }
 
-  function isStaticHosting() {
-    const host = window.location.hostname.toLowerCase();
-    return window.location.protocol === "file:" || host.endsWith("github.io");
-  }
-
-  function explainHttpFailure(status, body) {
-    if (status === 404) {
-      return "Backend saknas för poängsparning.";
-    }
-
-    if (status === 500 && body.includes("D1 binding DB saknas")) {
-      return "Backend finns men D1 binding saknas. Koppla DB i Cloudflare Pages Settings -> Bindings.";
-    }
-
-    return "Servern kunde inte spara poängen.";
-  }
-
   async function checkApiStatus() {
     if (state.backendMode === "supabase") {
       console.info("Backend: supabase (live)");
+      return;
+    }
+    if (state.backendReason) {
+      console.info(`Backend: local fallback (${state.backendReason})`);
       return;
     }
     console.info("Backend: local fallback");
@@ -1416,11 +1421,25 @@
       headers["Content-Type"] = "application/json";
     }
 
+    if (options.acceptJson) {
+      headers.Accept = "application/json";
+    }
+
     if (options.prefer) {
       headers.Prefer = options.prefer;
     }
 
     return headers;
+  }
+
+  async function fetchWithTimeout(url, options, timeoutMs = CONSTANTS.probeTimeoutMs) {
+    const controller = new AbortController();
+    const timerId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timerId);
+    }
   }
 
   async function resolveBackendMode() {
@@ -1435,19 +1454,15 @@
       return;
     }
 
-    const headers = buildSupabaseHeaders(supabaseConfig.key);
+    const headers = buildSupabaseHeaders(supabaseConfig.key, { acceptJson: true });
     if (!headers) {
-      state.backendMode = "supabase";
+      state.backendMode = "local";
       state.backendReason = "invalid_token";
       state.canUseGlobalLeaderboard = true;
       state.backendHint = "";
-      console.warn("[Snake] backend mode decision: supabase (invalid token format)");
+      console.warn("[Snake] backend mode decision: local (invalid token format)");
       return;
     }
-
-    state.backendMode = "supabase";
-    state.canUseGlobalLeaderboard = true;
-    state.backendHint = "";
 
     const params = new URLSearchParams({
       select: "id",
@@ -1455,46 +1470,41 @@
     });
 
     try {
-      const response = await fetch(`${supabaseConfig.url}/rest/v1/scores?${params.toString()}`, {
+      const response = await fetchWithTimeout(`${supabaseConfig.url}/rest/v1/scores?${params.toString()}`, {
         method: "GET",
         headers,
       });
 
       if (response.ok) {
+        state.backendMode = "supabase";
         state.backendReason = "probe_ok";
+        state.canUseGlobalLeaderboard = true;
+        state.backendHint = "";
         console.info("[Snake] backend mode decision: supabase (probe ok)");
         return;
       }
 
+      state.backendMode = "local";
       state.backendReason = `probe_http_${response.status}`;
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
       console.warn(`[Snake] backend probe failed (http ${response.status})`);
     } catch (_error) {
+      state.backendMode = "local";
       state.backendReason = "probe_network";
+      state.canUseGlobalLeaderboard = true;
+      state.backendHint = "";
       console.warn("[Snake] backend probe failed (network)");
     }
   }
 
   async function fetchLeaderboardData() {
-    if (state.backendMode === "local") {
-      return fetchLeaderboardLocal(CONSTANTS.leaderboardFetchLimit);
-    }
-
     if (state.backendMode === "supabase") {
       const config = getConfig();
       return fetchLeaderboardSupabase(config, CONSTANTS.leaderboardFetchLimit);
     }
 
-    const response = await fetch(CONSTANTS.leaderboardEndpoint, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-
-    if (!response.ok) {
-      console.warn("[Snake] API topplista misslyckades.", { status: response.status });
-      throw new Error("Kunde inte hämta topplistan");
-    }
-
-    return response.json();
+    return fetchLeaderboardLocal(CONSTANTS.leaderboardFetchLimit);
   }
 
   async function fetchLeaderboardSupabase(config, limit = CONSTANTS.leaderboardFetchLimit) {
@@ -1509,7 +1519,7 @@
     });
 
     const endpointPath = `/rest/v1/scores?${params.toString()}`;
-    const headers = buildSupabaseHeaders(config.key);
+    const headers = buildSupabaseHeaders(config.key, { acceptJson: true });
     if (!headers) {
       throw new Error("Supabase är inte konfigurerat.");
     }

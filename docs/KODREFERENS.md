@@ -4,7 +4,7 @@
 
 - `index.html`: layout med spelpanel, topplista och modal.
 - `style.css`: premium mörk UI, responsiv desktop och mobil.
-- `script.js`: spel-loop, input, rendering, ljud, topplista, API-status.
+- `script.js`: spel-loop, input, rendering, ljud, topplista och backenddiagnostik i console.
 - `config.js`: `SUPABASE_URL` och `SUPABASE_ANON_KEY`.
 
 ## Data

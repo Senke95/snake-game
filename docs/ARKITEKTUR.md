@@ -11,7 +11,7 @@
 1. Spelet körs helt i klienten.
 2. Topplistan läses vid laddning.
 3. Vid game over kan score sparas.
-4. UI visar alltid status: `API: live`, `API: fel`, `API: lokal`.
+4. Om Supabase är tillfälligt nere faller spelet tillbaka till lokal topplista.
 
 ## Principer
 
