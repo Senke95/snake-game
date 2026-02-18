@@ -2,6 +2,8 @@
 
 Ett statiskt Snake-spel med global topplista.
 
+https://senke95.github.io/snake-game/
+
 ## Kör lokalt
 
 ```bash
