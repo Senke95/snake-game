@@ -113,6 +113,7 @@
     food: { x: 0, y: 0 },
     bonusFood: null,
     score: 0,
+    speedScore: 0,
     highScore: readHighScore(),
     stepMs: CONSTANTS.baseStepMs,
     accumulatorMs: 0,
@@ -487,10 +488,11 @@
     state.trail.length = 0;
     state.shakeAmount = 0;
     state.score = 0;
+    state.speedScore = 0;
     state.bonusFood = null;
     state.pendingRecordAttempt = null;
     state.hasCelebratedRecordThisRun = false;
-    state.stepMs = CONSTANTS.baseStepMs;
+    updateStepMsFromSpeedScore();
     spawnFood();
     updateHud();
   }
@@ -523,6 +525,8 @@
     let frameDeltaMs = timeStamp - state.lastFrameTime;
     state.lastFrameTime = timeStamp;
     frameDeltaMs = Math.min(frameDeltaMs, CONSTANTS.maxAccumulatorMs);
+    const now = Date.now();
+    clearExpiredBonusFood(now);
 
     if (state.mode === GAME_MODE.running) {
       state.accumulatorMs += frameDeltaMs;
@@ -540,14 +544,13 @@
 
     updateParticles(deltaSeconds);
     updateShake(deltaSeconds);
-    draw(alpha, deltaSeconds);
+    draw(alpha, deltaSeconds, now);
 
     requestAnimationFrame(loop);
   }
 
   // En logisk tick: riktning, kollision, mat, score och game over.
   function fixedStep() {
-    clearExpiredBonusFood(Date.now());
     applyBufferedTurn();
 
     state.prevSnake = state.snake.map(cloneCell);
@@ -593,15 +596,13 @@
 
     if (willEatFood) {
       state.score += 1;
+      state.speedScore += 1;
       if (state.score > state.highScore) {
         state.highScore = state.score;
         saveHighScore(state.highScore);
       }
 
-      state.stepMs = Math.max(
-        CONSTANTS.minStepMs,
-        CONSTANTS.baseStepMs - state.score * CONSTANTS.speedRampPerPoint
-      );
+      updateStepMsFromSpeedScore();
 
       spawnFood();
       maybeSpawnBonusFood();
@@ -618,11 +619,6 @@
         saveHighScore(state.highScore);
       }
 
-      state.stepMs = Math.max(
-        CONSTANTS.minStepMs,
-        CONSTANTS.baseStepMs - state.score * CONSTANTS.speedRampPerPoint
-      );
-
       state.bonusFood = null;
       spawnParticles(head.x, head.y, CONSTANTS.particleBurstCount);
       addShake(4);
@@ -632,6 +628,13 @@
     } else {
       state.snake.pop();
     }
+  }
+
+  function updateStepMsFromSpeedScore() {
+    state.stepMs = Math.max(
+      CONSTANTS.minStepMs,
+      CONSTANTS.baseStepMs - state.speedScore * CONSTANTS.speedRampPerPoint
+    );
   }
 
   function applyBufferedTurn() {
@@ -846,7 +849,7 @@
   }
 
   // Topnivå-rendering av en frame.
-  function draw(alpha, dt) {
+  function draw(alpha, dt, now) {
     if (canvas.width === 0 || canvas.height === 0) {
       return;
     }
@@ -861,7 +864,7 @@
     }
 
     ctx.drawImage(offscreenCanvas, 0, 0);
-    drawFood(Date.now());
+    drawFood(now);
     drawSnake(alpha, dt);
     drawParticles();
     drawOverlay();
@@ -899,6 +902,8 @@
     if (!state.bonusFood) {
       return;
     }
+
+    ctx.save();
 
     const tile = state.tileSizePx;
     const size = tile * 0.72;
@@ -954,7 +959,28 @@
       roundRectFill(ctx, x, y, size, size, tile * 0.2);
     }
 
-    ctx.shadowBlur = 0;
+    const label = type === "x2" ? "2x" : type === "x5" ? "5x" : "10x";
+    const labelColor = type === "x2" ? "#fff4f9" : type === "x5" ? "#f4edff" : "#fff8eb";
+    const labelShadowColor =
+      type === "x2"
+        ? "rgba(82, 28, 51, 0.42)"
+        : type === "x5"
+          ? "rgba(35, 23, 76, 0.44)"
+          : "rgba(95, 64, 17, 0.42)";
+
+    ctx.font = `700 ${Math.max(11, tile * 0.3)}px "Segoe UI", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (state.effectsEnabled) {
+      ctx.shadowColor = labelShadowColor;
+      ctx.shadowBlur = tile * 0.08;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillStyle = labelColor;
+    ctx.fillText(label, x + size / 2, y + size / 2);
+
+    ctx.restore();
   }
 
   function drawSnake(alpha, dt) {
