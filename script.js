@@ -269,7 +269,7 @@
 
     playAgainNameBtnEl.addEventListener("click", () => {
       unlockAudioFromGesture();
-      restartGame();
+      startNewRunImmediately();
     });
 
     cancelNameBtnEl.addEventListener("click", () => {
@@ -456,12 +456,16 @@
     }
   }
 
-  function restartGame() {
+  function startNewRunImmediately() {
     closeNameModal();
     window.__pendingBeatsRecord = false;
     resetRound();
     setMode(GAME_MODE.running);
     announce("Spelet startat om");
+  }
+
+  function restartGame() {
+    startNewRunImmediately();
   }
 
   function setMode(mode) {
