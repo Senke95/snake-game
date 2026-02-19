@@ -70,6 +70,7 @@
   const nameInputEl = document.getElementById("player-name");
   const nameErrorEl = document.getElementById("name-error");
   const saveNameBtnEl = document.getElementById("save-name-btn");
+  const playAgainNameBtnEl = document.getElementById("play-again-name-btn");
   const cancelNameBtnEl = document.getElementById("cancel-name-btn");
 
   const dpadButtons = Array.from(document.querySelectorAll(".dpad-btn"));
@@ -239,6 +240,11 @@
     });
 
     nameFormEl.addEventListener("submit", submitScore);
+
+    playAgainNameBtnEl.addEventListener("click", () => {
+      unlockAudioFromGesture();
+      restartGame();
+    });
 
     cancelNameBtnEl.addEventListener("click", () => {
       closeNameModal();
@@ -881,6 +887,7 @@
   function openNameModal() {
     nameErrorEl.textContent = "";
     saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
+    playAgainNameBtnEl.disabled = false;
     cancelNameBtnEl.disabled = false;
     updateModalAvailabilityMessage();
     state.lastFocusBeforeModal =
@@ -948,6 +955,7 @@
 
     nameErrorEl.textContent = "";
     saveNameBtnEl.disabled = true;
+    playAgainNameBtnEl.disabled = true;
     cancelNameBtnEl.disabled = true;
 
     try {
@@ -978,6 +986,7 @@
       });
     } finally {
       saveNameBtnEl.disabled = !state.canUseGlobalLeaderboard;
+      playAgainNameBtnEl.disabled = false;
       cancelNameBtnEl.disabled = false;
     }
   }
