@@ -6,7 +6,7 @@
     gridSize: 22,
     baseStepMs: 145,
     minStepMs: 78,
-    speedRampPerPoint: 2.6,
+    speedRampPerPoint: 1.3,
     bonusUnlockScore: 10,
     bonusSpawnChance: 0.35,
     bonusSpawnMaxTries: 200,
@@ -84,6 +84,7 @@
   const leaderboardToggleEl = document.getElementById("leaderboard-toggle");
   const recordScoreEl = document.getElementById("record-score");
   const motivationEl = document.getElementById("leaderboard-motivation");
+  const motivationLabelEl = document.getElementById("motivation-label");
   const motivationRecordEl = document.getElementById("motivation-record");
   const leaderboardEmptyEl = document.getElementById("leaderboard-empty");
   const uiToastEl = document.getElementById("ui-toast");
@@ -591,7 +592,7 @@
         score: state.score,
       };
       window.__pendingBeatsRecord = state.score > (window.__top1Score ?? 0);
-      announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter för att spela igen`);
+      announce(`Spelet är slut. Poäng: ${state.score}. Tryck Enter eller Space för att spela igen`);
       openNameModal();
       return;
     }
@@ -1079,7 +1080,7 @@
       ctx.fillStyle = "#ff9ab3";
       ctx.fillText(`Poäng: ${state.score}`, canvas.width / 2, canvas.height * 0.51);
       ctx.fillStyle = "#dae6ff";
-      ctx.fillText("Tryck Enter för att spela igen", canvas.width / 2, canvas.height * 0.58);
+      ctx.fillText("Tryck Enter eller Space för att spela igen", canvas.width / 2, canvas.height * 0.58);
       return;
     }
 
@@ -1088,7 +1089,7 @@
       return;
     }
 
-    ctx.fillText("Tryck Enter för att starta", canvas.width / 2, canvas.height * 0.5);
+    ctx.fillText("Tryck Enter eller Space för att starta", canvas.width / 2, canvas.height * 0.5);
   }
 
   function interpolateCell(index, alpha) {
@@ -1322,19 +1323,27 @@
     );
   }
 
+  function setMotivationMain(label, score) {
+    if (motivationLabelEl) {
+      motivationLabelEl.textContent = label;
+    }
+    if (motivationRecordEl) {
+      motivationRecordEl.textContent = String(score);
+    }
+  }
+
   function renderLeaderboard(top) {
     leaderboardListEl.innerHTML = "";
     const recordScore = Number.isFinite(top[0]?.score) ? top[0].score : 0;
     recordScoreEl.textContent = String(recordScore);
-    motivationRecordEl.textContent = String(recordScore);
+    setMotivationMain("Slå rekordet:", recordScore);
 
     if (top.length === 0) {
       leaderboardEmptyEl.hidden = false;
       motivationEl.hidden = false;
       leaderboardEmptyEl.querySelector("h3").textContent = "Inga resultat ännu. Bli först.";
       leaderboardEmptyEl.querySelector("p").textContent = "Spela en runda och sätt första platsen.";
-      motivationEl.querySelector(".motivation-main").innerHTML =
-        `Slå rekordet: <strong>${recordScore}</strong>`;
+      setMotivationMain("Slå rekordet:", recordScore);
       updateLeaderboardScrollFade();
       return;
     }
@@ -1344,11 +1353,9 @@
 
     if (top.length === 1) {
       motivationEl.hidden = false;
-      motivationEl.querySelector(".motivation-main").innerHTML =
-        `Din utmaning: slå <strong>${recordScore}</strong>.`;
+      setMotivationMain("Din utmaning: slå", recordScore);
     } else if (top.length < 5) {
-      motivationEl.querySelector(".motivation-main").innerHTML =
-        `Slå rekordet: <strong>${recordScore}</strong>`;
+      setMotivationMain("Slå rekordet:", recordScore);
     }
 
     let youBadgeUsed = false;
@@ -1696,21 +1703,16 @@
     };
   }
 
-  function isLegacyJwtKey(key) {
-    return key.split(".").length === 3;
-  }
-
   function buildSupabaseHeaders(token, options = {}) {
     const normalizedToken = String(token || "").trim();
     if (!normalizedToken) {
       return null;
     }
 
-    const headers = { apikey: normalizedToken };
-
-    if (isLegacyJwtKey(normalizedToken)) {
-      headers.Authorization = `Bearer ${normalizedToken}`;
-    }
+    const headers = {
+      apikey: normalizedToken,
+      Authorization: `Bearer ${normalizedToken}`,
+    };
 
     if (options.json) {
       headers["Content-Type"] = "application/json";

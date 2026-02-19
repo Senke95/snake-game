@@ -57,7 +57,13 @@
       <header class="panel-header compact">
         <div class="leaderboard-head-row">
           <h2>Topplista</h2>
-          <button id="leaderboard-toggle" class="leaderboard-toggle" type="button" aria-expanded="false">
+          <button
+            id="leaderboard-toggle"
+            class="leaderboard-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="leaderboard-list-wrap"
+          >
             Visa
           </button>
         </div>
@@ -78,7 +84,7 @@
         </div>
       </section>
       <section id="leaderboard-motivation" class="leaderboard-motivation" hidden>
-        <p class="motivation-main">Slå rekordet: <strong id="motivation-record">0</strong></p>
+        <p class="motivation-main"><span id="motivation-label">Slå rekordet:</span> <strong id="motivation-record">0</strong></p>
         <p class="motivation-tip">Tips: håll dig nära mitten när hastigheten ökar.</p>
       </section>
       <footer class="leaderboard-footer">
