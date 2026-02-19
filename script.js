@@ -603,15 +603,12 @@
     if (growSegments === 0) {
       state.snake.pop();
     } else if (growSegments > 1) {
-      const tail = state.snake[state.snake.length - 1];
-      for (let i = 0; i < growSegments - 1; i += 1) {
-        state.snake.push({ x: tail.x, y: tail.y });
-      }
+      appendTailSegments(growSegments - 1);
     }
 
     if (willEatFood) {
       state.score += 1;
-      state.speedScore += 1;
+      state.speedScore += growSegments;
       if (state.score > state.highScore) {
         state.highScore = state.score;
         saveHighScore(state.highScore);
@@ -628,10 +625,13 @@
       updateHud();
     } else if (willEatBonus) {
       state.score += bonusConfig.score;
+      state.speedScore += growSegments;
       if (state.score > state.highScore) {
         state.highScore = state.score;
         saveHighScore(state.highScore);
       }
+
+      updateStepMsFromSpeedScore();
 
       state.bonusFood = null;
       spawnParticles(head.x, head.y, CONSTANTS.particleBurstCount);
@@ -639,6 +639,50 @@
       triggerHaptic(CONSTANTS.hapticEatMs);
       audio.eat();
       updateHud();
+    }
+  }
+
+  function appendTailSegments(extraSegments) {
+    if (extraSegments <= 0 || state.snake.length === 0) {
+      return;
+    }
+
+    let tailDirection = { x: -state.direction.x, y: -state.direction.y };
+    if (state.snake.length >= 2) {
+      const tail = state.snake[state.snake.length - 1];
+      const beforeTail = state.snake[state.snake.length - 2];
+      const dx = tail.x - beforeTail.x;
+      const dy = tail.y - beforeTail.y;
+      if (Math.abs(dx) + Math.abs(dy) === 1) {
+        tailDirection = { x: dx, y: dy };
+      }
+    }
+
+    for (let i = 0; i < extraSegments; i += 1) {
+      const tail = state.snake[state.snake.length - 1];
+      const candidate = {
+        x: tail.x + tailDirection.x,
+        y: tail.y + tailDirection.y,
+      };
+
+      const outOfBounds =
+        candidate.x < 0 ||
+        candidate.y < 0 ||
+        candidate.x >= CONSTANTS.gridSize ||
+        candidate.y >= CONSTANTS.gridSize;
+
+      if (outOfBounds) {
+        state.snake.push({ x: tail.x, y: tail.y });
+        continue;
+      }
+
+      const overlapsBody = state.snake.some((segment) => segment.x === candidate.x && segment.y === candidate.y);
+      if (overlapsBody) {
+        state.snake.push({ x: tail.x, y: tail.y });
+        continue;
+      }
+
+      state.snake.push(candidate);
     }
   }
 
