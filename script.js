@@ -302,7 +302,11 @@
       return;
     }
 
-    if (key === "enter" && modalEl.classList.contains("is-open") && state.mode === GAME_MODE.gameover) {
+    if (
+      (key === "enter" || key === " ") &&
+      modalEl.classList.contains("is-open") &&
+      state.mode === GAME_MODE.gameover
+    ) {
       event.preventDefault();
       startGame();
       return;
@@ -324,19 +328,22 @@
 
     unlockAudioFromGesture();
 
-    if (key === "enter") {
+    if (key === "enter" || key === " ") {
       if (state.mode === GAME_MODE.idle || state.mode === GAME_MODE.gameover) {
         startGame();
-      } else if (state.mode === GAME_MODE.paused) {
+        return;
+      }
+
+      if (state.mode === GAME_MODE.paused) {
         setMode(GAME_MODE.running);
         announce("Fortsatt");
+        return;
       }
-      return;
-    }
 
-    if (key === " ") {
-      togglePause();
-      return;
+      if (key === " ") {
+        togglePause();
+        return;
+      }
     }
 
     if (key === "r") {
