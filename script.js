@@ -7,6 +7,9 @@
     baseStepMs: 145,
     minStepMs: 78,
     speedRampPerPoint: 2.6,
+    bonusUnlockScore: 10,
+    bonusSpawnChance: 0.35,
+    bonusSpawnMaxTries: 200,
     maxAccumulatorMs: 240,
     probeTimeoutMs: 5000,
     particleBurstCount: 14,
@@ -34,6 +37,27 @@
     down: { x: 0, y: 1 },
     left: { x: -1, y: 0 },
     right: { x: 1, y: 0 },
+  };
+
+  const BONUS_FOOD_TYPES = {
+    x2: {
+      score: 2,
+      ttlMs: 8000,
+      weight: 0.7,
+      safeZoneOnly: false,
+    },
+    x5: {
+      score: 5,
+      ttlMs: 5000,
+      weight: 0.22,
+      safeZoneOnly: true,
+    },
+    x10: {
+      score: 10,
+      ttlMs: 3500,
+      weight: 0.08,
+      safeZoneOnly: true,
+    },
   };
 
   const canvas = document.getElementById("game");
@@ -87,6 +111,7 @@
     direction: { ...DIRECTIONS.right },
     inputBuffer: [],
     food: { x: 0, y: 0 },
+    bonusFood: null,
     score: 0,
     highScore: readHighScore(),
     stepMs: CONSTANTS.baseStepMs,
@@ -455,6 +480,7 @@
     state.trail.length = 0;
     state.shakeAmount = 0;
     state.score = 0;
+    state.bonusFood = null;
     state.pendingRecordAttempt = null;
     state.hasCelebratedRecordThisRun = false;
     state.stepMs = CONSTANTS.baseStepMs;
@@ -514,6 +540,7 @@
 
   // En logisk tick: riktning, kollision, mat, score och game over.
   function fixedStep() {
+    clearExpiredBonusFood(Date.now());
     applyBufferedTurn();
 
     state.prevSnake = state.snake.map(cloneCell);
@@ -524,8 +551,13 @@
       y: currentHead.y + state.direction.y,
     };
 
-    const willEat = head.x === state.food.x && head.y === state.food.y;
-    const collisionBody = willEat ? state.snake : state.snake.slice(0, -1);
+    const willEatFood = head.x === state.food.x && head.y === state.food.y;
+    const willEatBonus =
+      state.bonusFood !== null &&
+      head.x === state.bonusFood.x &&
+      head.y === state.bonusFood.y;
+    const willGrow = willEatFood || willEatBonus;
+    const collisionBody = willGrow ? state.snake : state.snake.slice(0, -1);
 
     const hitsWall =
       head.x < 0 ||
@@ -552,7 +584,7 @@
 
     state.snake.unshift(head);
 
-    if (willEat) {
+    if (willEatFood) {
       state.score += 1;
       if (state.score > state.highScore) {
         state.highScore = state.score;
@@ -565,6 +597,26 @@
       );
 
       spawnFood();
+      maybeSpawnBonusFood();
+      spawnParticles(head.x, head.y, CONSTANTS.particleBurstCount);
+      addShake(4);
+      triggerHaptic(CONSTANTS.hapticEatMs);
+      audio.eat();
+      updateHud();
+    } else if (willEatBonus) {
+      const bonusConfig = BONUS_FOOD_TYPES[state.bonusFood.type];
+      state.score += bonusConfig.score;
+      if (state.score > state.highScore) {
+        state.highScore = state.score;
+        saveHighScore(state.highScore);
+      }
+
+      state.stepMs = Math.max(
+        CONSTANTS.minStepMs,
+        CONSTANTS.baseStepMs - state.score * CONSTANTS.speedRampPerPoint
+      );
+
+      state.bonusFood = null;
       spawnParticles(head.x, head.y, CONSTANTS.particleBurstCount);
       addShake(4);
       triggerHaptic(CONSTANTS.hapticEatMs);
@@ -589,17 +641,146 @@
   }
 
   function spawnFood() {
-    const occupied = new Set(state.snake.map((segment) => `${segment.x},${segment.y}`));
+    const boardBounds = getBoardBounds();
+    const candidate =
+      pickRandomEmptyCell(boardBounds, CONSTANTS.gridSize * CONSTANTS.gridSize, {
+        includeNormalFood: false,
+      }) ||
+      findFirstEmptyCell(boardBounds, { includeNormalFood: false });
 
-    let candidate;
-    do {
-      candidate = {
-        x: Math.floor(Math.random() * CONSTANTS.gridSize),
-        y: Math.floor(Math.random() * CONSTANTS.gridSize),
-      };
-    } while (occupied.has(`${candidate.x},${candidate.y}`));
+    if (candidate) {
+      state.food = candidate;
+    }
+  }
 
-    state.food = candidate;
+  function maybeSpawnBonusFood() {
+    if (state.bonusFood !== null || state.score < CONSTANTS.bonusUnlockScore) {
+      return;
+    }
+
+    if (Math.random() > CONSTANTS.bonusSpawnChance) {
+      return;
+    }
+
+    spawnBonusFood();
+  }
+
+  function spawnBonusFood() {
+    const type = pickBonusFoodType();
+    const bonusConfig = BONUS_FOOD_TYPES[type];
+    const bounds = bonusConfig.safeZoneOnly ? getCentralSafeZoneBounds() : getBoardBounds();
+    const candidate = pickRandomEmptyCell(bounds, CONSTANTS.bonusSpawnMaxTries);
+    if (!candidate) {
+      return;
+    }
+
+    state.bonusFood = {
+      x: candidate.x,
+      y: candidate.y,
+      type,
+      expiresAt: Date.now() + bonusConfig.ttlMs,
+    };
+  }
+
+  function clearExpiredBonusFood(now) {
+    if (!state.bonusFood) {
+      return;
+    }
+
+    if (now > state.bonusFood.expiresAt) {
+      state.bonusFood = null;
+    }
+  }
+
+  function pickBonusFoodType() {
+    const roll = Math.random();
+    let cursor = 0;
+    const types = Object.keys(BONUS_FOOD_TYPES);
+
+    for (let i = 0; i < types.length; i += 1) {
+      const type = types[i];
+      cursor += BONUS_FOOD_TYPES[type].weight;
+      if (roll < cursor) {
+        return type;
+      }
+    }
+
+    return "x2";
+  }
+
+  function getBoardBounds() {
+    return {
+      minX: 0,
+      maxX: CONSTANTS.gridSize - 1,
+      minY: 0,
+      maxY: CONSTANTS.gridSize - 1,
+    };
+  }
+
+  function getCentralSafeZoneBounds() {
+    return {
+      minX: Math.floor(CONSTANTS.gridSize * 0.25),
+      maxX: Math.ceil(CONSTANTS.gridSize * 0.75) - 1,
+      minY: Math.floor(CONSTANTS.gridSize * 0.25),
+      maxY: Math.ceil(CONSTANTS.gridSize * 0.75) - 1,
+    };
+  }
+
+  function isCellOccupied(x, y, options = {}) {
+    const includeNormalFood = options.includeNormalFood !== false;
+    const includeBonusFood = options.includeBonusFood !== false;
+
+    for (let i = 0; i < state.snake.length; i += 1) {
+      const segment = state.snake[i];
+      if (segment.x === x && segment.y === y) {
+        return true;
+      }
+    }
+
+    if (includeNormalFood && state.food.x === x && state.food.y === y) {
+      return true;
+    }
+
+    if (
+      includeBonusFood &&
+      state.bonusFood &&
+      state.bonusFood.x === x &&
+      state.bonusFood.y === y
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function pickRandomEmptyCell(bounds, maxTries, options = {}) {
+    const spanX = bounds.maxX - bounds.minX + 1;
+    const spanY = bounds.maxY - bounds.minY + 1;
+    if (spanX <= 0 || spanY <= 0 || maxTries <= 0) {
+      return null;
+    }
+
+    for (let tries = 0; tries < maxTries; tries += 1) {
+      const x = bounds.minX + Math.floor(Math.random() * spanX);
+      const y = bounds.minY + Math.floor(Math.random() * spanY);
+      if (!isCellOccupied(x, y, options)) {
+        return { x, y };
+      }
+    }
+
+    return null;
+  }
+
+  function findFirstEmptyCell(bounds, options = {}) {
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+        if (!isCellOccupied(x, y, options)) {
+          return { x, y };
+        }
+      }
+    }
+
+    return null;
   }
 
   function spawnParticles(cellX, cellY, count) {
@@ -673,7 +854,7 @@
     }
 
     ctx.drawImage(offscreenCanvas, 0, 0);
-    drawFood();
+    drawFood(Date.now());
     drawSnake(alpha, dt);
     drawParticles();
     drawOverlay();
@@ -681,7 +862,12 @@
     ctx.restore();
   }
 
-  function drawFood() {
+  function drawFood(now) {
+    drawNormalFood();
+    drawBonusFood(now);
+  }
+
+  function drawNormalFood() {
     const tile = state.tileSizePx;
     const size = tile * 0.72;
     const offset = (tile - size) * 0.5;
@@ -698,6 +884,68 @@
     gradient.addColorStop(1, "#ff4f73");
     ctx.fillStyle = gradient;
     roundRectFill(ctx, x, y, size, size, tile * 0.2);
+
+    ctx.shadowBlur = 0;
+  }
+
+  function drawBonusFood(now) {
+    if (!state.bonusFood) {
+      return;
+    }
+
+    const tile = state.tileSizePx;
+    const size = tile * 0.72;
+    const offset = (tile - size) * 0.5;
+    const x = state.bonusFood.x * tile + offset;
+    const y = state.bonusFood.y * tile + offset;
+    const type = state.bonusFood.type;
+
+    if (state.effectsEnabled) {
+      if (type === "x2") {
+        ctx.shadowColor = "rgba(255, 142, 190, 0.7)";
+        ctx.shadowBlur = tile * 0.18;
+      } else if (type === "x5") {
+        ctx.shadowColor = "rgba(114, 98, 215, 0.45)";
+        ctx.shadowBlur = tile * 0.22;
+      } else {
+        ctx.shadowColor = "rgba(255, 210, 120, 0.5)";
+        ctx.shadowBlur = tile * 0.24;
+      }
+    }
+
+    if (type === "x2") {
+      const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+      gradient.addColorStop(0, "#ff89b7");
+      gradient.addColorStop(1, "#ff5681");
+      ctx.fillStyle = gradient;
+      roundRectFill(ctx, x, y, size, size, tile * 0.2);
+
+      const inset = size * 0.24;
+      ctx.fillStyle = "rgba(255, 214, 229, 0.42)";
+      roundRectFill(
+        ctx,
+        x + inset,
+        y + inset,
+        size - inset * 2,
+        size - inset * 2,
+        tile * 0.12
+      );
+    } else if (type === "x5") {
+      const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+      gradient.addColorStop(0, "#6a5cda");
+      gradient.addColorStop(1, "#3f3196");
+      ctx.fillStyle = gradient;
+      roundRectFill(ctx, x, y, size, size, tile * 0.2);
+    } else {
+      const phase = Math.floor(now / 250) % 2;
+      const toneA = phase === 0 ? "#ffd87a" : "#f3c65b";
+      const toneB = phase === 0 ? "#e4a93a" : "#f5ba4d";
+      const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+      gradient.addColorStop(0, toneA);
+      gradient.addColorStop(1, toneB);
+      ctx.fillStyle = gradient;
+      roundRectFill(ctx, x, y, size, size, tile * 0.2);
+    }
 
     ctx.shadowBlur = 0;
   }
