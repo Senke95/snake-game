@@ -284,8 +284,8 @@
       });
     }
 
-    if (leaderboardListEl) {
-      leaderboardListEl.addEventListener("scroll", updateLeaderboardScrollFade, { passive: true });
+    if (leaderboardListWrapEl) {
+      leaderboardListWrapEl.addEventListener("scroll", updateLeaderboardScrollFade, { passive: true });
     }
   }
 
@@ -1509,13 +1509,14 @@
   }
 
   function updateLeaderboardScrollFade() {
-    if (!leaderboardListWrapEl || !leaderboardListEl) {
+    if (!leaderboardListWrapEl) {
       return;
     }
 
-    const hasOverflow = leaderboardListEl.scrollHeight > leaderboardListEl.clientHeight + 2;
+    const hasOverflow = leaderboardListWrapEl.scrollHeight > leaderboardListWrapEl.clientHeight + 2;
     const atBottom =
-      leaderboardListEl.scrollTop + leaderboardListEl.clientHeight >= leaderboardListEl.scrollHeight - 2;
+      leaderboardListWrapEl.scrollTop + leaderboardListWrapEl.clientHeight >=
+      leaderboardListWrapEl.scrollHeight - 2;
 
     leaderboardListWrapEl.classList.toggle("has-overflow", hasOverflow);
     leaderboardListWrapEl.classList.toggle("at-bottom", atBottom);
