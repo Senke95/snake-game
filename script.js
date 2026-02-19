@@ -572,6 +572,8 @@
       head.x === state.bonusFood.x &&
       head.y === state.bonusFood.y;
     const willGrow = willEatFood || willEatBonus;
+    const bonusConfig = willEatBonus ? BONUS_FOOD_TYPES[state.bonusFood.type] : null;
+    const growSegments = willEatFood ? 1 : bonusConfig ? bonusConfig.score : 0;
     const collisionBody = willGrow ? state.snake : state.snake.slice(0, -1);
 
     const hitsWall =
@@ -598,6 +600,14 @@
     }
 
     state.snake.unshift(head);
+    if (growSegments === 0) {
+      state.snake.pop();
+    } else if (growSegments > 1) {
+      const tail = state.snake[state.snake.length - 1];
+      for (let i = 0; i < growSegments - 1; i += 1) {
+        state.snake.push({ x: tail.x, y: tail.y });
+      }
+    }
 
     if (willEatFood) {
       state.score += 1;
@@ -617,7 +627,6 @@
       audio.eat();
       updateHud();
     } else if (willEatBonus) {
-      const bonusConfig = BONUS_FOOD_TYPES[state.bonusFood.type];
       state.score += bonusConfig.score;
       if (state.score > state.highScore) {
         state.highScore = state.score;
@@ -630,8 +639,6 @@
       triggerHaptic(CONSTANTS.hapticEatMs);
       audio.eat();
       updateHud();
-    } else {
-      state.snake.pop();
     }
   }
 
